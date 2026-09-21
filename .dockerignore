@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.idea/
+**/.junie/
+.git/
+.gitea/
+charts/
+.artifacts/
+*.md
