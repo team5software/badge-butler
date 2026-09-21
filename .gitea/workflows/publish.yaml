@@ -64,6 +64,31 @@ jobs:
           token: ${{ secrets.GITEA_TOKEN }}
           ref: ${{ steps.tags.outputs.ref }}
 
+      # Self-contained gate: build.yaml already runs the full test+coverage pipeline, but that's
+      # a separate workflow with no ordering guarantee against this one, so a failing suite
+      # wouldn't otherwise stop an image from getting pushed. No continue-on-error - this must
+      # block the build/push steps below.
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Restore
+        run: dotnet restore BadgeButler.slnx
+
+      # No test project exists yet (empty test/ folder in the .slnx), and `dotnet test` exits
+      # non-zero for "no test projects found" same as it would for an actual failure - only
+      # treat that specific, textual case as a pass so real failures still block the pipeline.
+      - name: Test
+        run: |
+          set +e
+          output=$(dotnet test BadgeButler.slnx --no-restore -c Release 2>&1)
+          exit_code=$?
+          echo "$output"
+          if [ $exit_code -ne 0 ] && echo "$output" | grep -q "No test projects were found"; then
+            echo "No test projects yet - nothing to gate on."
+            exit 0
+          fi
+          exit $exit_code
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
