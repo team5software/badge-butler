@@ -15,9 +15,9 @@
 #     only the `${{ gitea.* }}` context itself is renamed from `github.*`)
 #
 # Required repo secrets beyond the existing GITEA_TOKEN (checkout):
-#   GITEA_PACKAGE_TOKEN  - Gitea access token with package:write, for docker/helm login
-#   GHCR_USERNAME         - GitHub username/org to push under (e.g. "t5s")
-#   GHCR_TOKEN            - GitHub PAT with write:packages
+#   T5S_PACKAGE_TOKEN  - Gitea access token with package:write, for docker/helm login
+#   GHCR_USERNAME      - GitHub username/org to push under (e.g. "t5s")
+#   GHCR_TOKEN         - GitHub PAT with write:packages
 name: Publish
 on:
   push:
@@ -75,7 +75,7 @@ jobs:
         with:
           registry: gitea.team5software.de
           username: ${{ gitea.actor }}
-          password: ${{ secrets.GITEA_PACKAGE_TOKEN }}
+          password: ${{ secrets.T5S_PACKAGE_TOKEN }}
 
       - name: Build and push to Gitea (required)
         uses: docker/build-push-action@v6
@@ -144,7 +144,7 @@ jobs:
         run: helm package charts/badge-butler --destination .
 
       - name: Log in to Gitea registry
-        run: helm registry login gitea.team5software.de -u "${{ gitea.actor }}" -p "${{ secrets.GITEA_PACKAGE_TOKEN }}"
+        run: helm registry login gitea.team5software.de -u "${{ gitea.actor }}" -p "${{ secrets.T5S_PACKAGE_TOKEN }}"
 
       - name: Push chart to Gitea (required)
         run: helm push "badge-butler-${{ needs.image.outputs.version }}.tgz" oci://gitea.team5software.de/t5s
