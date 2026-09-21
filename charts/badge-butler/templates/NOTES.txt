@@ -1,0 +1,22 @@
+Badge Butler is deploying.
+
+{{- if not .Values.database.host }}
+
+WARNING: database.host is empty — the app will fail to reach Postgres until you set
+database.host (and existingSecret, or user/password for local testing).
+{{- end }}
+
+Check rollout status:
+  kubectl -n {{ .Release.Namespace }} rollout status deployment/{{ include "badge-butler.fullname" . }}
+
+{{- if .Values.ingress.enabled }}
+
+Reachable at:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+
+No Ingress created (ingress.enabled=false). Reach it via:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "badge-butler.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}

@@ -1,0 +1,24 @@
+# Gitea Actions replacement for the old GitLab CI Renovate job. Runs on the self-hosted
+# act_runner. Renovate ships its own image, so no runner-template dependency needed.
+name: Renovate
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    container:
+      image: renovate/renovate:44.83.0
+    steps:
+      - name: Run Renovate
+        env:
+          RENOVATE_PLATFORM: gitea
+          RENOVATE_ENDPOINT: "https://gitea.team5software.de/"
+          # Gitea Actions secret (repo Settings -> Actions -> Secrets), not hl-infra/K8s.
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+          RENOVATE_REPOSITORIES: t5s/config-bridge
+          # Avoids unauthenticated GitHub API rate limits on changelog lookups.
+          RENOVATE_GITHUB_COM_TOKEN: ${{ secrets.RENOVATE_GITHUB_COM_TOKEN }}
+        run: renovate

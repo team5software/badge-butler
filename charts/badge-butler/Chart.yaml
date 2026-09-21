@@ -1,0 +1,15 @@
+apiVersion: v2
+name: badge-butler
+description: Stores and serves status badges (build, coverage, etc.) for repos
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://gitea.team5software.de/t5s/badge-butler
+sources:
+  - https://gitea.team5software.de/t5s/badge-butler
+maintainers:
+  - name: t5s
+keywords:
+  - badges
+  - ci
+  - coverage

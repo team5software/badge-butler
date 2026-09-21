@@ -1,0 +1,129 @@
+replicaCount: 1
+
+image:
+  repository: gitea.team5software.de/t5s/badge-butler
+  tag: ""  # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+# Only needed if pulling from a private registry (e.g. Gitea's package registry without
+# anonymous image pulls enabled). Leave empty for a public registry.
+imagePullSecrets: []
+# - name: gitea-registry
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+service:
+  type: ClusterIP
+  port: 80
+
+# Plain networking.k8s.io/v1 Ingress, for anyone not fronting the cluster with Traefik.
+# On hl-apps (Traefik) this stays disabled and an IngressRoute is added alongside the release,
+# same pattern as this homelab's other Helm-based apps (gitea, vaultwarden, ...).
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: badges.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  # - secretName: badge-butler-tls
+  #   hosts:
+  #     - badges.example.com
+
+# ASP.NET Core connects to Postgres for badge state (label/message/color/updated-at per badge).
+# Provision the database itself out of band (e.g. a CNPG Cluster on hl-apps) and point this at
+# it — the chart never creates a database.
+database:
+  host: ""
+  port: 5432
+  name: badgebutler
+  sslMode: Prefer
+  # Preferred (GitOps-safe): reference a Secret created out of band, e.g. CNPG's
+  # auto-generated "<cluster>-app" secret, which already has "user"/"password" keys.
+  existingSecret:
+    name: ""
+    userKey: user
+    passwordKey: password
+  # Fallback for local/manual `helm install` testing only — renders a Secret from these values.
+  # Never set these in a committed, GitOps-reconciled values file.
+  user: ""
+  password: ""
+
+# Fixed key required on write (PUT/DELETE) endpoints; GET is always open regardless. Leave both
+# existingSecret.name and apiKey unset to run with no auth at all (open writes) — fine for a
+# private/LAN-only deployment.
+auth:
+  existingSecret:
+    name: ""
+    key: apiKey
+  # Fallback for local/manual `helm install` testing only — renders a Secret from this value.
+  # Never set this in a committed, GitOps-reconciled values file.
+  apiKey: ""
+
+env: {}
+  # ASPNETCORE_ENVIRONMENT: Production
+
+# Escape hatch for anything not covered above (extra env vars needing valueFrom, etc).
+extraEnv: []
+# - name: SOME_TOKEN
+#   valueFrom:
+#     secretKeyRef:
+#       name: badge-butler-extra
+#       key: token
+
+extraVolumes: []
+extraVolumeMounts: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

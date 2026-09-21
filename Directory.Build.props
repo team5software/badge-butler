@@ -1,0 +1,50 @@
+<Project>
+	<!-- General PropertyGroup -->
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<LangVersion>latest</LangVersion>
+		
+		<ImplicitUsings>disable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<AssemblyName>$(MSBuildProjectName)</AssemblyName>
+		<RootNamespace>T5S.$(MSBuildProjectName)</RootNamespace>
+
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<NoWarn>$(NoWarn);CS1591</NoWarn>
+
+		<UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+	</PropertyGroup>
+
+	<!-- Test specific PropertyGroup 
+	 - Tests are always executables with the MTP / xunit.v3
+	-->
+	<PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
+		<OutputType>Exe</OutputType>
+	</PropertyGroup>
+
+	<!-- General ItemGroup -->
+	<ItemGroup>
+		<CompilerVisibilityProperty Include="RootNamespace" />
+		<CompilerVisibilityProperty Include="ProjectDir" />
+	</ItemGroup>
+
+	<!-- Non-Test specific ItemGroup
+	 - Internals should be visible to the associated test assembly
+	-->
+	<ItemGroup Condition="!$(MSBuildProjectName.EndsWith('.Tests'))">
+		<InternalsVisibleTo Include="$(MSBuildProjectName).Tests" />
+	</ItemGroup>
+
+	<!-- Test specific ItemGroup
+	 - Default test packages including MTP, xunit, coverlet, TRX-extension, AwesomeAssertions
+	-->
+	<ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
+		<PackageReference Include="AwesomeAssertions" />
+		<PackageReference Include="coverlet.MTP" />
+		<PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+		<PackageReference Include="Microsoft.Testing.Platform" />
+		<PackageReference Include="xunit.v3" />
+	</ItemGroup>
+</Project>

@@ -1,0 +1,23 @@
+# Fails a PR if its title isn't a Conventional Commit — this repo squash-merges, and the PR
+# title becomes the final commit's subject line, so this is the actual enforcement point.
+# See docs/renovate.md for why this is hand-rolled instead of a marketplace action, and the
+# required manual Gitea branch-protection step to make this actually block merging.
+name: PR Title Lint
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  conventional-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title follows Conventional Commits
+        env:
+          TITLE: ${{ gitea.event.pull_request.title }}
+        run: |
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-zA-Z0-9/_.-]+\))?!?: .+$'
+          if [[ ! "$TITLE" =~ $pattern ]]; then
+            echo "PR title is not a valid Conventional Commit: \"$TITLE\""
+            echo "Expected: type(optional-scope)!: description — e.g. fix(deps): bump chart to v2"
+            exit 1
+          fi
