@@ -1,10 +1,20 @@
+# IDE artifacts
+.idea/
 .vs/
+
+# Build artifacts
 [bB]in/
 [oO]bj/
 
+# User specific files
 *.csproj.user
 *.[dD]ot[sS]ettings.user
 
+# CI artifacts
 .artifacts/
 
+# OS artifacts
 .DS_Store
+
+# AI artifacts
+.junie/
