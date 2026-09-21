@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BadgeButler.Api/BadgeButler.Api.csproj" />
+  </Folder>
+  <Folder Name="/test/" />
+</Solution>

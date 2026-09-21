@@ -1,0 +1,10 @@
+.vs/
+[bB]in/
+[oO]bj/
+
+*.csproj.user
+*.[dD]ot[sS]ettings.user
+
+.artifacts/
+
+.DS_Store
