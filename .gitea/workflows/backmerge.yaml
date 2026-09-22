@@ -1,0 +1,44 @@
+# Merges main back into develop after every push to main. Needed because release PRs use
+# "Rebase and Merge" (see BadgeButler.slnx-adjacent release process discussion) - rebasing gives
+# each commit a new SHA on main, so even though the content already existed on develop, the two
+# branches diverge at the hash level and a plain future develop->main diff would show them as
+# "new" again. This keeps develop caught up so that never happens.
+#
+# No extra review step here (straight push, not a PR) - everything landing on main already went
+# through develop first, so there's nothing new to review in the backmerge itself.
+#
+# Assumption worth verifying: secrets.GITEA_TOKEN has push rights to develop when this workflow
+# declares permissions.contents: write. If push fails with a permissions error, this needs a
+# dedicated PAT (e.g. reuse T5S_PACKAGE_TOKEN, or a new one) instead.
+name: Backmerge
+on:
+  push:
+    branches: [main]
+
+jobs:
+  backmerge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITEA_TOKEN }}
+          fetch-depth: 0
+
+      - name: Merge main into develop
+        run: |
+          git config user.name "gitea-actions[bot]"
+          git config user.email "actions@noreply.team5software.de"
+
+          git fetch origin main develop
+
+          if git merge-base --is-ancestor origin/main origin/develop; then
+            echo "develop already contains main's tip - nothing to backmerge."
+            exit 0
+          fi
+
+          git checkout -B develop origin/develop
+          git merge origin/main --no-edit -m "chore: backmerge main into develop"
+          git push origin develop
