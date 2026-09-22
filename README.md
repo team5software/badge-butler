@@ -35,12 +35,10 @@ are open — fine for a private/LAN-only deployment. When set, write requests ne
 - `charts/badge-butler/` — Helm chart; see its own [README](charts/badge-butler/README.md) for
   values and install instructions.
 
-Images and the chart are published on tagged releases (`vX.Y.Z`) to both registries:
+Images and the chart are published on tagged releases (`vX.Y.Z`) only, tagged with the version
+and `latest`, to both registries:
 
 | | Image | Chart |
 |---|---|---|
 | Gitea | `gitea.team5software.de/t5s/badge-butler` | `oci://gitea.team5software.de/t5s/charts` |
 | GHCR | `ghcr.io/team5software/badge-butler` | `oci://ghcr.io/team5software/charts` |
-
-`develop` pushes also publish `latest`/`unstable` image tags (no chart) for anyone tracking
-ongoing development rather than tagged releases.
