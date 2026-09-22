@@ -3,15 +3,12 @@
 ![release](https://badges.team5software.de/badges/badge-butler-release)
 ![build](https://badges.team5software.de/badges/badge-butler-build)
 ![tests](https://badges.team5software.de/badges/badge-butler-tests)
+![coverage](https://badges.team5software.de/badges/badge-butler-coverage)
 
 Stores and serves status badges (build, coverage, etc.) for repos — small, self-hosted, no
 dependency on shields.io. Values are self-rendered as SVG from state kept in Postgres, served by
 the deployment at [`badges.team5software.de`](https://badges.team5software.de) and updated
 automatically by the workflows below.
-
-`tests` currently reads "failing" — accurate, not a display bug: there's no test project yet, so
-the CI test step has nothing to run and reports failure. `build` is unaffected (it reflects
-compilation only). A `coverage` badge will show up here once real tests exist to produce one.
 
 > **Source of truth: [Gitea](https://gitea.team5software.de/t5s/badge-butler).**
 > [github.com/team5software/badge-butler](https://github.com/team5software/badge-butler) is a
