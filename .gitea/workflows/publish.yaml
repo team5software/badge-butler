@@ -1,21 +1,9 @@
-# Publishes the container image and Helm chart on real vX.Y.Z tags only - image tagged with the
-# version and "latest", chart packaged/pushed at that version. No continuous develop/unstable
-# builds anymore (dropped deliberately - they cluttered the registries for no real benefit).
-#
-# Gitea's own registry is the required destination — that's what hl-apps/Flux actually pulls
-# from. GHCR is best-effort: its login/push steps use continue-on-error so a GHCR outage or bad
-# credentials never fails the run, but a warning is written to the job summary when it happens.
-#
-# Assumptions worth verifying against your actual instance/runner (can't be checked from here):
-#   - the act_runner's DinD sidecar allows buildx + binfmt/QEMU registration (privileged, see
-#     hl-apps apps/homelab/gitea/act-runner.yaml)
-#   - GITHUB_ENV/GITHUB_OUTPUT/GITHUB_STEP_SUMMARY are the right special-file names here (Gitea
-#     Actions keeps these GitHub-named for compatibility with unmodified marketplace actions;
-#     only the `${{ gitea.* }}` context itself is renamed from `github.*`)
+# Publishes the container image and Helm chart on vX.Y.Z tags - image tagged with the
+# version and "latest", chart packaged/pushed at that version.
 #
 # Required repo secrets beyond the existing GITEA_TOKEN (checkout):
 #   T5S_PACKAGE_TOKEN  - Gitea access token with package:write, for docker/helm login
-#   GHCR_USERNAME      - GitHub username/org to push under (e.g. "t5s")
+#   GHCR_USERNAME      - GitHub username/org to push under
 #   GHCR_TOKEN         - GitHub PAT with write:packages
 name: Publish
 on:
@@ -23,13 +11,14 @@ on:
     tags: ["v*.*.*"]
 
 jobs:
-  image:
+  prerequisites:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     outputs:
       version: ${{ steps.tags.outputs.version }}
+      gitea_tags: ${{ steps.tags.outputs.gitea_tags }}
+      ghcr_tags: ${{ steps.tags.outputs.ghcr_tags }}
     steps:
       - name: Determine tags
         id: tags
@@ -54,34 +43,27 @@ jobs:
         with:
           token: ${{ secrets.GITEA_TOKEN }}
 
-      # Self-contained gate: build.yaml already runs the full test+coverage pipeline, but that's
-      # a separate workflow with no ordering guarantee against this one, so a failing suite
-      # wouldn't otherwise stop an image from getting pushed. No continue-on-error - this must
-      # block the build/push steps below.
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
-
       - name: Restore
         run: dotnet restore BadgeButler.slnx
-
-      # No test project exists yet (empty test/ folder in the .slnx), and `dotnet test` exits
-      # non-zero for "no test projects found" same as it would for an actual failure - only
-      # treat that specific, textual case as a pass so real failures still block the pipeline.
       - name: Test
-        run: |
-          set +e
-          output=$(dotnet test BadgeButler.slnx --no-restore -c Release 2>&1)
-          exit_code=$?
-          echo "$output"
-          if [ $exit_code -ne 0 ] && echo "$output" | grep -q "No test projects were found"; then
-            echo "No test projects yet - nothing to gate on."
-            exit 0
-          fi
-          exit $exit_code
+        run: dotnet test BadgeButler.slnx --no-restore -c Release
+
+  docker-image:
+    needs: prerequisites
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITEA_TOKEN }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
-
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -92,16 +74,16 @@ jobs:
           username: ${{ gitea.actor }}
           password: ${{ secrets.T5S_PACKAGE_TOKEN }}
 
-      - name: Build and push to Gitea (required)
+      - name: Build and push to Gitea
         uses: docker/build-push-action@v6
         with:
           context: .
           file: src/BadgeButler.Api/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.tags.outputs.gitea_tags }}
+          tags: ${{ needs.prerequisites.outputs.gitea_tags }}
 
-      - name: Log in to GHCR (best-effort)
+      - name: Log in to GHCR (optional)
         id: ghcr_login
         continue-on-error: true
         uses: docker/login-action@v3
@@ -110,29 +92,27 @@ jobs:
           username: ${{ secrets.GHCR_USERNAME }}
           password: ${{ secrets.GHCR_TOKEN }}
 
-      - name: Build and push to GHCR (best-effort)
-        id: ghcr_push
+      - name: Build and push to GHCR
         if: steps.ghcr_login.outcome == 'success'
-        continue-on-error: true
         uses: docker/build-push-action@v6
         with:
           context: .
           file: src/BadgeButler.Api/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.tags.outputs.ghcr_tags }}
+          tags: ${{ needs.prerequisites.outputs.ghcr_tags }}
 
-      - name: Warn if GHCR push failed
-        if: steps.ghcr_login.outcome == 'failure' || steps.ghcr_push.outcome == 'failure'
+      - name: Warn if GHCR login failed
+        if: steps.ghcr_login.outcome == 'failure'
         run: |
           {
-            echo "### :warning: GHCR image push failed"
-            echo "Gitea registry push succeeded; ghcr.io did not (see the failed step above). Pipeline still passes since Gitea is the required destination."
+            echo "### :warning: Could not connect to GHCR (docker-image)"
+            echo "Pushing to ghcr.io is optional and this can be intended. If you want to push to ghcr.io, please check your credentials."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  chart:
+  helm-chart:
+    needs: [ prerequisites, docker-image ]
     runs-on: ubuntu-latest
-    needs: image
     permissions:
       contents: read
       packages: write
@@ -147,7 +127,7 @@ jobs:
 
       - name: Set chart/app version from tag
         env:
-          VERSION: ${{ needs.image.outputs.version }}
+          VERSION: ${{ needs.prerequisites.outputs.version }}
         run: |
           sed -i "s/^version: .*/version: ${VERSION}/" charts/badge-butler/Chart.yaml
           sed -i "s/^appVersion: .*/appVersion: \"${VERSION}\"/" charts/badge-butler/Chart.yaml
@@ -158,38 +138,42 @@ jobs:
       - name: Log in to Gitea registry
         run: helm registry login gitea.team5software.de -u "${{ gitea.actor }}" -p "${{ secrets.T5S_PACKAGE_TOKEN }}"
 
-      # Under its own "charts/" path, not "t5s/badge-butler" directly - `helm push` appends
-      # "/<chart-name>:<version>" to whatever path you give it, and that would otherwise land on
-      # the exact same OCI ref the image tag uses (t5s/badge-butler:0.1.0), silently overwriting
-      # the image with the chart. Confirmed this actually happened on the real registry.
-      - name: Push chart to Gitea (required)
-        run: helm push "badge-butler-${{ needs.image.outputs.version }}.tgz" oci://gitea.team5software.de/t5s/charts
+      - name: Push chart to Gitea
+        run: helm push "badge-butler-${{ needs.prerequisites.outputs.version }}.tgz" oci://gitea.team5software.de/t5s/charts
 
-      - name: Log in to GHCR (best-effort)
+      - name: Log in to GHCR (optional)
         id: ghcr_login
         continue-on-error: true
         run: helm registry login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" -p "${{ secrets.GHCR_TOKEN }}"
 
-      - name: Push chart to GHCR (best-effort)
-        id: ghcr_push
+      - name: Push chart to GHCR
         if: steps.ghcr_login.outcome == 'success'
-        continue-on-error: true
-        run: helm push "badge-butler-${{ needs.image.outputs.version }}.tgz" "oci://ghcr.io/${{ secrets.GHCR_USERNAME }}/charts"
+        run: helm push "badge-butler-${{ needs.prerequisites.outputs.version }}.tgz" "oci://ghcr.io/${{ secrets.GHCR_USERNAME }}/charts"
 
-      - name: Warn if GHCR chart push failed
-        if: steps.ghcr_login.outcome == 'failure' || steps.ghcr_push.outcome == 'failure'
+      - name: Warn if GHCR login failed
+        if: steps.ghcr_login.outcome == 'failure'
         run: |
           {
-            echo "### :warning: GHCR chart push failed"
-            echo "Gitea chart push succeeded; ghcr.io did not. Pipeline still passes since Gitea is the required destination."
+            echo "### :warning: Could not connect to GHCR (helm-chart)"
+            echo "Pushing to ghcr.io is optional and this can be intended. If you want to push to ghcr.io, please check your credentials."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # This whole workflow only triggers on real vX.Y.Z tags, so reaching this step already
-      # means it's a real release.
+  finish-line:
+    needs: [ prerequisites, docker-image, helm-chart ]
+    runs-on: ubuntu-latest
+    steps:
       - name: Update release badge
+        id: badge_update
         continue-on-error: true
         run: |
           curl -sf -X PUT https://badges.team5software.de/badges/badge-butler-release \
             -H "Content-Type: application/json" \
             -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
-            -d "{\"label\":\"release\",\"message\":\"v${{ needs.image.outputs.version }}\",\"color\":\"blue\"}"
+            -d "{\"label\":\"release\",\"message\":\"v${{ needs.prerequisites.outputs.version }}\",\"color\":\"blue\"}"
+
+      - name: Warn if badge update failed
+        if: steps.badge_update.outcome == 'failure'
+        run: |
+          {
+            echo "### :warning: Could not update badges"
+          } >> "$GITHUB_STEP_SUMMARY"
