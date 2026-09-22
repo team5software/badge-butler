@@ -15,6 +15,21 @@ jobs:
         with:
           token: ${{ secrets.GITEA_TOKEN }}
 
+      # So the badges reflect "in progress" rather than sitting on stale pass/fail state for the
+      # whole run - same push-only gating as the real updates below, since a PR run shouldn't
+      # touch these either.
+      - name: Set badges to running
+        if: gitea.event_name == 'push'
+        continue-on-error: true
+        run: |
+          for key in badge-butler-build badge-butler-tests; do
+            label=${key#badge-butler-}
+            curl -sf -X PUT "https://badges.team5software.de/badges/${key}" \
+              -H "Content-Type: application/json" \
+              -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
+              -d "{\"label\":\"${label}\",\"message\":\"running\",\"color\":\"dfb317\"}"
+          done
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
 
