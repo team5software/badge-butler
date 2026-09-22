@@ -46,10 +46,6 @@ jobs:
         with:
           token: ${{ secrets.GITEA_TOKEN }}
 
-      # Computed here rather than passed from prerequisites - a multi-line job output like a tag
-      # list doesn't survive the needs.<job>.outputs.* hop reliably (confirmed: buildx failed
-      # with "tag is needed when pushing to registry", meaning it arrived empty). Same-job step
-      # output does work, so this stays local to the job that actually consumes it.
       - name: Compute image tags
         id: tags
         run: |
