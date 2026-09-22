@@ -1,23 +1,36 @@
-# Fails a PR if its title isn't a Conventional Commit — this repo squash-merges, and the PR
-# title becomes the final commit's subject line, so this is the actual enforcement point.
-# See docs/renovate.md for why this is hand-rolled instead of a marketplace action, and the
-# required manual Gitea branch-protection step to make this actually block merging.
+# Fails a PR if its title isn't in the expected format. Requires a manual Gitea branch-protection
+# step to actually block merging.
+#
+# develop -> main PRs are real merges (not squashed) representing a release promotion, so they
+# get their own "release: vX.Y.Z" format instead of a Conventional Commit type. Everything else
+# (PRs into develop) still needs Conventional Commits, since this repo squash-merges those and
+# the PR title becomes the final commit's subject line.
 name: PR Title Lint
 on:
   pull_request:
     types: [opened, edited, synchronize]
 
 jobs:
-  conventional-commit:
+  title-lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Check PR title follows Conventional Commits
+      - name: Check PR title
         env:
           TITLE: ${{ gitea.event.pull_request.title }}
+          BASE: ${{ gitea.event.pull_request.base.ref }}
         run: |
-          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-zA-Z0-9/_.-]+\))?!?: .+$'
-          if [[ ! "$TITLE" =~ $pattern ]]; then
-            echo "PR title is not a valid Conventional Commit: \"$TITLE\""
-            echo "Expected: type(optional-scope)!: description — e.g. fix(deps): bump chart to v2"
-            exit 1
+          if [ "$BASE" = "main" ]; then
+            pattern='^release: v[0-9]+\.[0-9]+\.[0-9]+$'
+            if [[ ! "$TITLE" =~ $pattern ]]; then
+              echo "PR title is not a valid release title: \"$TITLE\""
+              echo "Expected: release: vX.Y.Z — e.g. release: v0.1.2"
+              exit 1
+            fi
+          else
+            pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-zA-Z0-9/_.-]+\))?!?: .+$'
+            if [[ ! "$TITLE" =~ $pattern ]]; then
+              echo "PR title is not a valid Conventional Commit: \"$TITLE\""
+              echo "Expected: type(optional-scope)!: description — e.g. fix(deps): bump chart to v2"
+              exit 1
+            fi
           fi

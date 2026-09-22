@@ -196,3 +196,13 @@ jobs:
             echo "### :warning: GHCR chart push failed"
             echo "Gitea chart push succeeded; ghcr.io did not. Pipeline still passes since Gitea is the required destination."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # This job only runs on real vX.Y.Z tags (see the job-level `if` above), so reaching this
+      # step already means it's a real release - no separate is_release check needed here.
+      - name: Update release badge
+        continue-on-error: true
+        run: |
+          curl -sf -X PUT https://badges.team5software.de/badges/badge-butler-release \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
+            -d "{\"label\":\"release\",\"message\":\"v${{ needs.image.outputs.version }}\",\"color\":\"blue\"}"

@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -11,7 +12,20 @@ using T5S.BadgeButler.Api;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddOpenApi();
+// Set by the Helm chart from the same value used for the image tag, so the OpenAPI doc always
+// reports the version actually running, not whatever was baked in at compile time.
+var appVersion = builder.Configuration["App:Version"] ?? "dev";
+
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer((document, _, _) =>
+    {
+        document.Info.Title = "Badge Butler API";
+        document.Info.Description = "Stores and serves status badges (build, coverage, etc.) for repos.";
+        document.Info.Version = appVersion;
+        return Task.CompletedTask;
+    });
+});
 builder.Services.AddHealthChecks();
 builder.Services.AddProblemDetails();
 
@@ -32,7 +46,8 @@ app.MapScalarApiReference();
 
 app.UseHttpsRedirection();
 
-// Liveness/readiness probe target for the container/Helm chart.
+// Liveness/readiness probe target for the container/Helm chart. Not part of the OpenAPI doc -
+// the health-checks middleware excludes its own endpoint from API description by default.
 app.MapHealthChecks("/health");
 
 await app.Services.GetRequiredService<BadgeStore>().InitializeAsync();
@@ -49,7 +64,12 @@ app.MapGet("/badges/{key}", async (string key, BadgeStore store, HttpResponse re
         response.Headers.CacheControl = "no-cache";
         return Results.Text(BadgeSvgRenderer.Render(badge.Label, badge.Message, badge.Color), "image/svg+xml");
     })
-    .WithName("GetBadge");
+    .WithName("GetBadge")
+    .WithTags("Badges")
+    .WithSummary("Get a badge")
+    .WithDescription("Renders the badge's current label/message/color as an SVG image. Never requires authentication.")
+    .Produces(StatusCodes.Status200OK, typeof(string), "image/svg+xml")
+    .Produces(StatusCodes.Status404NotFound);
 
 app.MapPut("/badges/{key}", async (string key, BadgeUpdate update, HttpRequest request, BadgeStore store) =>
     {
@@ -67,7 +87,14 @@ app.MapPut("/badges/{key}", async (string key, BadgeUpdate update, HttpRequest r
         await store.UpsertAsync(key, update.Label, update.Message, color);
         return Results.NoContent();
     })
-    .WithName("UpsertBadge");
+    .WithName("UpsertBadge")
+    .WithTags("Badges")
+    .WithSummary("Create or update a badge")
+    .WithDescription("Upserts the badge's label/message/color. color defaults to \"lightgrey\" when omitted. " +
+        "Requires X-Api-Key when Auth:ApiKey is configured on this deployment; open otherwise.")
+    .Produces(StatusCodes.Status204NoContent)
+    .Produces(StatusCodes.Status400BadRequest)
+    .Produces(StatusCodes.Status401Unauthorized);
 
 app.MapDelete("/badges/{key}", async (string key, HttpRequest request, BadgeStore store) =>
     {
@@ -78,7 +105,13 @@ app.MapDelete("/badges/{key}", async (string key, HttpRequest request, BadgeStor
 
         return await store.DeleteAsync(key) ? Results.NoContent() : Results.NotFound();
     })
-    .WithName("DeleteBadge");
+    .WithName("DeleteBadge")
+    .WithTags("Badges")
+    .WithSummary("Delete a badge")
+    .WithDescription("Requires X-Api-Key when Auth:ApiKey is configured on this deployment; open otherwise.")
+    .Produces(StatusCodes.Status204NoContent)
+    .Produces(StatusCodes.Status401Unauthorized)
+    .Produces(StatusCodes.Status404NotFound);
 
 app.Run();
 

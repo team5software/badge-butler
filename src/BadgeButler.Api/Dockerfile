@@ -33,6 +33,13 @@ RUN dotnet publish src/BadgeButler.Api/BadgeButler.Api.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS runtime
 WORKDIR /app
 
+# Points at the GitHub mirror, not the canonical Gitea source - GHCR only auto-links a package
+# to a repo page (README, visibility, "used by") when this annotation resolves to a github.com
+# repo it can see, so it has to be this URL specifically for that to work.
+LABEL org.opencontainers.image.source="https://github.com/team5software/badge-butler" \
+      org.opencontainers.image.description="Stores and serves status badges (build, coverage, etc.) for repos" \
+      org.opencontainers.image.licenses="MIT"
+
 # Chiseled image already runs as the non-root "app" user and has no shell/package manager.
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_EnableDiagnostics=0
