@@ -2,5 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/BadgeButler.Api/BadgeButler.Api.csproj" />
   </Folder>
-  <Folder Name="/test/" />
+  <Folder Name="/test/">
+    <Project Path="test/BadgeButler.Api.Tests/BadgeButler.Api.Tests.csproj" />
+  </Folder>
 </Solution>
