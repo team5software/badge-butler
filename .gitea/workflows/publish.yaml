@@ -77,7 +77,8 @@ jobs:
       # annotations (index-level, on the multi-arch manifest list the tag actually points at)
       # alongside the Dockerfile's own LABEL (per-platform image config, one level deeper) -
       # GHCR's repo-auto-link reads the former for a multi-arch tag; the LABEL alone wasn't
-      # picked up.
+      # picked up. Source points at wherever this specific push actually lands - Gitea here,
+      # GitHub in the GHCR step below - rather than the same URL for both.
       - name: Build and push to Gitea
         uses: docker/build-push-action@v6
         with:
@@ -88,7 +89,7 @@ jobs:
           provenance: false
           tags: ${{ steps.tags.outputs.gitea_tags }}
           annotations: |
-            index:org.opencontainers.image.source=https://github.com/team5software/badge-butler
+            index:org.opencontainers.image.source=https://gitea.team5software.de/t5s/badge-butler
             index:org.opencontainers.image.description=Stores and serves status badges (build, coverage, etc.) for repos
             index:org.opencontainers.image.licenses=MIT
 
