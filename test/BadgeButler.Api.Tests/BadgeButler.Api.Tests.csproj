@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../../src/BadgeButler.Api/BadgeButler.Api.csproj" />
+  </ItemGroup>
+</Project>
