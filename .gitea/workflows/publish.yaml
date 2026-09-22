@@ -171,8 +171,12 @@ jobs:
       - name: Log in to Gitea registry
         run: helm registry login gitea.team5software.de -u "${{ gitea.actor }}" -p "${{ secrets.T5S_PACKAGE_TOKEN }}"
 
+      # Under its own "charts/" path, not "t5s/badge-butler" directly - `helm push` appends
+      # "/<chart-name>:<version>" to whatever path you give it, and that would otherwise land on
+      # the exact same OCI ref the image tag uses (t5s/badge-butler:0.1.0), silently overwriting
+      # the image with the chart. Confirmed this actually happened on the real registry.
       - name: Push chart to Gitea (required)
-        run: helm push "badge-butler-${{ needs.image.outputs.version }}.tgz" oci://gitea.team5software.de/t5s
+        run: helm push "badge-butler-${{ needs.image.outputs.version }}.tgz" oci://gitea.team5software.de/t5s/charts
 
       - name: Log in to GHCR (best-effort)
         id: ghcr_login
@@ -183,7 +187,7 @@ jobs:
         id: ghcr_push
         if: steps.ghcr_login.outcome == 'success'
         continue-on-error: true
-        run: helm push "badge-butler-${{ needs.image.outputs.version }}.tgz" "oci://ghcr.io/${{ secrets.GHCR_USERNAME }}"
+        run: helm push "badge-butler-${{ needs.image.outputs.version }}.tgz" "oci://ghcr.io/${{ secrets.GHCR_USERNAME }}/charts"
 
       - name: Warn if GHCR chart push failed
         if: steps.ghcr_login.outcome == 'failure' || steps.ghcr_push.outcome == 'failure'
