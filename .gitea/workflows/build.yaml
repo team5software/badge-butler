@@ -22,6 +22,7 @@ jobs:
         run: dotnet restore BadgeButler.slnx
 
       - name: Build
+        id: build
         run: dotnet build BadgeButler.slnx --no-restore -c Release
 
       # No test project exists yet, so this currently fails every run ("No test projects were
@@ -47,14 +48,14 @@ jobs:
             "-reporttypes:Html;Badges;JsonSummary"
 
       # Only on push (not pull_request, to avoid a PR run clobbering the badge with a transient
-      # status) - reflects steps.test.outcome directly, since continue-on-error above means the
-      # job itself always "succeeds" even when tests actually failed.
+      # status). Reflects steps.build.outcome specifically - does it compile - independent of
+      # whether tests pass (see "Update tests badge" below for that).
       # continue-on-error: a badges.team5software.de hiccup shouldn't fail an unrelated build.
       - name: Update build badge
         if: always() && gitea.event_name == 'push'
         continue-on-error: true
         run: |
-          if [ "${{ steps.test.outcome }}" = "success" ]; then
+          if [ "${{ steps.build.outcome }}" = "success" ]; then
             MESSAGE=passing; COLOR=4c1
           else
             MESSAGE=failing; COLOR=e05d44
@@ -63,6 +64,23 @@ jobs:
             -H "Content-Type: application/json" \
             -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
             -d "{\"label\":\"build\",\"message\":\"${MESSAGE}\",\"color\":\"${COLOR}\"}"
+
+      # Separate from the build badge: this is steps.test.outcome specifically, so a compile
+      # failure (which skips Test entirely, leaving its outcome empty) still correctly shows
+      # "failing" here via the else branch, same as a genuine test failure would.
+      - name: Update tests badge
+        if: always() && gitea.event_name == 'push'
+        continue-on-error: true
+        run: |
+          if [ "${{ steps.test.outcome }}" = "success" ]; then
+            MESSAGE=passing; COLOR=4c1
+          else
+            MESSAGE=failing; COLOR=e05d44
+          fi
+          curl -sf -X PUT https://badges.team5software.de/badges/badge-butler-tests \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
+            -d "{\"label\":\"tests\",\"message\":\"${MESSAGE}\",\"color\":\"${COLOR}\"}"
 
       # Only meaningful once real tests/coverage exist (steps.test.outcome == 'success' implies
       # the coverage report step above actually ran and produced Summary.json).
