@@ -16,27 +16,11 @@ jobs:
     permissions:
       contents: read
     outputs:
-      version: ${{ steps.tags.outputs.version }}
-      gitea_tags: ${{ steps.tags.outputs.gitea_tags }}
-      ghcr_tags: ${{ steps.tags.outputs.ghcr_tags }}
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Determine tags
-        id: tags
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          {
-            echo "version=${VERSION}"
-
-            echo "gitea_tags<<TAGEOF"
-            echo "gitea.team5software.de/t5s/badge-butler:${VERSION}"
-            echo "gitea.team5software.de/t5s/badge-butler:latest"
-            echo "TAGEOF"
-
-            echo "ghcr_tags<<TAGEOF"
-            echo "ghcr.io/${{ secrets.GHCR_USERNAME }}/badge-butler:${VERSION}"
-            echo "ghcr.io/${{ secrets.GHCR_USERNAME }}/badge-butler:latest"
-            echo "TAGEOF"
-          } >> "$GITHUB_OUTPUT"
+      - name: Determine version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         uses: actions/checkout@v7
@@ -62,6 +46,26 @@ jobs:
         with:
           token: ${{ secrets.GITEA_TOKEN }}
 
+      # Computed here rather than passed from prerequisites - a multi-line job output like a tag
+      # list doesn't survive the needs.<job>.outputs.* hop reliably (confirmed: buildx failed
+      # with "tag is needed when pushing to registry", meaning it arrived empty). Same-job step
+      # output does work, so this stays local to the job that actually consumes it.
+      - name: Compute image tags
+        id: tags
+        run: |
+          VERSION="${{ needs.prerequisites.outputs.version }}"
+          {
+            echo "gitea_tags<<TAGEOF"
+            echo "gitea.team5software.de/t5s/badge-butler:${VERSION}"
+            echo "gitea.team5software.de/t5s/badge-butler:latest"
+            echo "TAGEOF"
+
+            echo "ghcr_tags<<TAGEOF"
+            echo "ghcr.io/${{ secrets.GHCR_USERNAME }}/badge-butler:${VERSION}"
+            echo "ghcr.io/${{ secrets.GHCR_USERNAME }}/badge-butler:latest"
+            echo "TAGEOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Buildx
@@ -81,7 +85,7 @@ jobs:
           file: src/BadgeButler.Api/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ needs.prerequisites.outputs.gitea_tags }}
+          tags: ${{ steps.tags.outputs.gitea_tags }}
 
       - name: Log in to GHCR (optional)
         id: ghcr_login
@@ -100,7 +104,7 @@ jobs:
           file: src/BadgeButler.Api/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ needs.prerequisites.outputs.ghcr_tags }}
+          tags: ${{ steps.tags.outputs.ghcr_tags }}
 
       - name: Warn if GHCR login failed
         if: steps.ghcr_login.outcome == 'failure'
