@@ -18,7 +18,7 @@ jobs:
           RENOVATE_ENDPOINT: "https://gitea.team5software.de/"
           # Gitea Actions secret (repo Settings -> Actions -> Secrets), not hl-infra/K8s.
           RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
-          RENOVATE_REPOSITORIES: t5s/config-bridge
+          RENOVATE_REPOSITORIES: t5s/badge-butler
           # Avoids unauthenticated GitHub API rate limits on changelog lookups.
           RENOVATE_GITHUB_COM_TOKEN: ${{ secrets.RENOVATE_GITHUB_COM_TOKEN }}
         run: renovate
