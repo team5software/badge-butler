@@ -46,6 +46,45 @@ jobs:
             "-targetdir:./.artifacts/coverage-report" \
             "-reporttypes:Html;Badges;JsonSummary"
 
+      # Only on push (not pull_request, to avoid a PR run clobbering the badge with a transient
+      # status) - reflects steps.test.outcome directly, since continue-on-error above means the
+      # job itself always "succeeds" even when tests actually failed.
+      # continue-on-error: a badges.team5software.de hiccup shouldn't fail an unrelated build.
+      - name: Update build badge
+        if: always() && gitea.event_name == 'push'
+        continue-on-error: true
+        run: |
+          if [ "${{ steps.test.outcome }}" = "success" ]; then
+            MESSAGE=passing; COLOR=4c1
+          else
+            MESSAGE=failing; COLOR=e05d44
+          fi
+          curl -sf -X PUT https://badges.team5software.de/badges/badge-butler-build \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
+            -d "{\"label\":\"build\",\"message\":\"${MESSAGE}\",\"color\":\"${COLOR}\"}"
+
+      # Only meaningful once real tests/coverage exist (steps.test.outcome == 'success' implies
+      # the coverage report step above actually ran and produced Summary.json).
+      - name: Update coverage badge
+        if: steps.test.outcome == 'success' && gitea.event_name == 'push'
+        continue-on-error: true
+        run: |
+          pct=$(grep -oP '"linecoverage":\s*\K[0-9.]+' ./.artifacts/coverage-report/Summary.json)
+          if [ -z "$pct" ]; then
+            echo "No coverage percentage found in Summary.json, skipping."
+            exit 0
+          fi
+          pct_int=${pct%%.*}
+          if [ "$pct_int" -ge 80 ]; then color=4c1
+          elif [ "$pct_int" -ge 50 ]; then color=dfb317
+          else color=e05d44
+          fi
+          curl -sf -X PUT https://badges.team5software.de/badges/badge-butler-coverage \
+            -H "Content-Type: application/json" \
+            -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
+            -d "{\"label\":\"coverage\",\"message\":\"${pct}%\",\"color\":\"${color}\"}"
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
