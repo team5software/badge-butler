@@ -42,6 +42,10 @@ spec:
               containerPort: 8080
               protocol: TCP
           env:
+            # Same expression as the image tag above, so the OpenAPI doc's reported version
+            # always matches whatever's actually deployed.
+            - name: App__Version
+              value: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
             - name: PGHOST
               value: {{ .Values.database.host | quote }}
             - name: PGPORT
