@@ -161,6 +161,19 @@ jobs:
         continue-on-error: true
         run: helm registry login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" -p "${{ secrets.GHCR_TOKEN }}"
 
+      # Chart.yaml's home/sources (baked into the pushed package's OCI annotations by `helm
+      # package`, not overridable per-push like docker buildx's --annotation) default to Gitea,
+      # the canonical source - correct for the push above, but GHCR only auto-links a package
+      # when that annotation resolves to a github.com repo it can see. Re-pointing and
+      # re-packaging here, after the Gitea push already used the original, gives GHCR its own
+      # correctly-sourced copy instead of the same Gitea-pointing one.
+      - name: Re-point chart source to GitHub mirror for GHCR
+        if: steps.ghcr_login.outcome == 'success'
+        run: |
+          sed -i "s|^home: .*|home: https://github.com/team5software/badge-butler|" charts/badge-butler/Chart.yaml
+          sed -i "s|^  - https://gitea.team5software.de/t5s/badge-butler|  - https://github.com/team5software/badge-butler|" charts/badge-butler/Chart.yaml
+          helm package charts/badge-butler --destination .
+
       - name: Push chart to GHCR
         if: steps.ghcr_login.outcome == 'success'
         run: helm push "badge-butler-${{ needs.prerequisites.outputs.version }}.tgz" "oci://ghcr.io/${{ secrets.GHCR_USERNAME }}/charts"
