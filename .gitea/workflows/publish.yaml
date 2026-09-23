@@ -80,7 +80,7 @@ jobs:
       # picked up. Source points at wherever this specific push actually lands - Gitea here,
       # GitHub in the GHCR step below - rather than the same URL for both.
       - name: Build and push to Gitea
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: src/BadgeButler.Api/Dockerfile
@@ -104,7 +104,7 @@ jobs:
 
       - name: Build and push to GHCR
         if: steps.ghcr_login.outcome == 'success'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: src/BadgeButler.Api/Dockerfile
