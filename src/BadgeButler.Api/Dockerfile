@@ -1,48 +1,35 @@
-# Build context is the repo root (needed for Directory.Build.props / Directory.Packages.props
-# central package management), so this is invoked as:
-#   docker build -f src/BadgeButler.Api/Dockerfile .
-#
-# --platform=$BUILDPLATFORM pins the build stage to the *builder's* native architecture even
-# when buildx is producing a different TARGETPLATFORM - the .NET SDK/MSBuild is a heavy,
-# multi-threaded process that reliably crashes under QEMU emulation (EventSource/reflection
-# failures inside System.Threading.Tasks.Dataflow). Cross-compiling via `-r <rid>
-# --self-contained false` instead means dotnet itself always runs natively; only a RID-specific,
-# non-executed output gets copied into the (correctly emulated-or-native) runtime stage.
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
 ARG TARGETARCH
 WORKDIR /src
 
-COPY Directory.Build.props Directory.Packages.props global.json ./
-COPY src/BadgeButler.Api/BadgeButler.Api.csproj src/BadgeButler.Api/
 RUN case "$TARGETARCH" in \
       amd64) RID=linux-x64 ;; \
       arm64) RID=linux-arm64 ;; \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
-    echo "$RID" > /tmp/rid && \
-    dotnet restore src/BadgeButler.Api/BadgeButler.Api.csproj -r "$RID"
+    echo "$RID" > /tmp/rid
 
+COPY Directory.Build.props Directory.Packages.props global.json ./
 COPY src/BadgeButler.Api/ src/BadgeButler.Api/
-RUN dotnet publish src/BadgeButler.Api/BadgeButler.Api.csproj \
+
+RUN dotnet restore src/BadgeButler.Api/BadgeButler.Api.csproj -r "$(cat /tmp/rid)"
+RUN dotnet publish src/BadgeButler.Api/BadgeButler.Api.csproj -r "$(cat /tmp/rid)" \
     -c Release \
     -o /app \
-    -r "$(cat /tmp/rid)" \
     --self-contained false \
     --no-restore
+
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS runtime
 WORKDIR /app
 
-# Canonical source, independent of where this image gets pushed - the per-push OCI index
-# annotations set in publish.yaml handle registry-specific repo-linking (GHCR needs its own
-# github.com URL there for that; this LABEL is baked into the image itself, not per-registry).
 LABEL org.opencontainers.image.source="https://gitea.team5software.de/t5s/badge-butler" \
-      org.opencontainers.image.description="Stores and serves status badges (build, coverage, etc.) for repos" \
+      org.opencontainers.image.description="Stores and serves status badges" \
       org.opencontainers.image.licenses="MIT"
 
-# Chiseled image already runs as the non-root "app" user and has no shell/package manager.
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_EnableDiagnostics=0
+
 EXPOSE 8080
 
 COPY --from=build /app .
