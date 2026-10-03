@@ -25,7 +25,7 @@ builder.Services.AddOpenApi(options =>
     options.AddDocumentTransformer((document, _, _) =>
     {
         document.Info.Title = "Badge Butler API";
-        document.Info.Description = "Stores and serves status badges (build, coverage, etc.) for repos.";
+        document.Info.Description = "Stores and serves status badges.";
         document.Info.Version = appVersion;
         return Task.CompletedTask;
     });

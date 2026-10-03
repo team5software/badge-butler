@@ -1,7 +1,7 @@
 name: Build & Test
 on:
   push:
-    branches: [main, develop]
+    branches: [develop]
   pull_request:
 
 jobs:
@@ -15,9 +15,7 @@ jobs:
         with:
           token: ${{ secrets.GITEA_TOKEN }}
 
-      # So the badges reflect "in progress" rather than sitting on stale pass/fail state for the
-      # whole run - same push-only gating as the real updates below, since a PR run shouldn't
-      # touch these either.
+      # Update badges to "in progress"
       - name: Set badges to running
         if: gitea.event_name == 'push'
         continue-on-error: true
@@ -27,6 +25,7 @@ jobs:
             curl -sf -X PUT "https://badges.team5software.de/badges/${key}" \
               -H "Content-Type: application/json" \
               -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
+              -H "X-Badge-Key: ${{ secrets.BADGE_BUTLER_BADGE_KEY }}" \
               -d "{\"label\":\"${label}\",\"message\":\"running\",\"color\":\"dfb317\"}"
           done
 
@@ -40,15 +39,14 @@ jobs:
         id: build
         run: dotnet build BadgeButler.slnx --no-restore -c Release
 
-      # id used to gate the report/badge steps below on whether this actually passed.
       - name: Test
         id: test
         run: >
           dotnet test --no-build -c Release --results-directory ./.artifacts/test-results
-          -- --coverlet --coverlet-output-format cobertura --coverlet-output-format opencover --coverlet-include '[BadgeButler.*]*'
-          --report-trx
+          -- --coverlet --coverlet-output-format cobertura --coverlet-output-format opencover --coverlet-include '[BadgeButler.*]*' --report-trx
 
       - name: Generate coverage report
+        id: coverage
         if: steps.test.outcome == 'success'
         run: |
           dotnet tool restore
@@ -57,10 +55,6 @@ jobs:
             "-targetdir:./.artifacts/coverage-report" \
             "-reporttypes:Html;Badges;JsonSummary"
 
-      # Only on push (not pull_request, to avoid a PR run clobbering the badge with a transient
-      # status). Reflects steps.build.outcome specifically - does it compile - independent of
-      # whether tests pass (see "Update tests badge" below for that).
-      # continue-on-error: a badges.team5software.de hiccup shouldn't fail an unrelated build.
       - name: Update build badge
         if: always() && gitea.event_name == 'push'
         continue-on-error: true
@@ -73,11 +67,9 @@ jobs:
           curl -sf -X PUT https://badges.team5software.de/badges/badge-butler-build \
             -H "Content-Type: application/json" \
             -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
+            -H "X-Badge-Key: ${{ secrets.BADGE_BUTLER_BADGE_KEY }}" \
             -d "{\"label\":\"build\",\"message\":\"${MESSAGE}\",\"color\":\"${COLOR}\"}"
 
-      # Separate from the build badge: this is steps.test.outcome specifically, so a compile
-      # failure (which skips Test entirely, leaving its outcome empty) still correctly shows
-      # "failing" here via the else branch, same as a genuine test failure would.
       - name: Update tests badge
         if: always() && gitea.event_name == 'push'
         continue-on-error: true
@@ -90,12 +82,11 @@ jobs:
           curl -sf -X PUT https://badges.team5software.de/badges/badge-butler-tests \
             -H "Content-Type: application/json" \
             -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
+            -H "X-Badge-Key: ${{ secrets.BADGE_BUTLER_BADGE_KEY }}" \
             -d "{\"label\":\"tests\",\"message\":\"${MESSAGE}\",\"color\":\"${COLOR}\"}"
 
-      # Only meaningful once real tests/coverage exist (steps.test.outcome == 'success' implies
-      # the coverage report step above actually ran and produced Summary.json).
       - name: Update coverage badge
-        if: steps.test.outcome == 'success' && gitea.event_name == 'push'
+        if: steps.coverage.outcome == 'success' && gitea.event_name == 'push'
         continue-on-error: true
         run: |
           pct=$(grep -oP '"linecoverage":\s*\K[0-9.]+' ./.artifacts/coverage-report/Summary.json)
@@ -111,6 +102,7 @@ jobs:
           curl -sf -X PUT https://badges.team5software.de/badges/badge-butler-coverage \
             -H "Content-Type: application/json" \
             -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
+            -H "X-Badge-Key: ${{ secrets.BADGE_BUTLER_BADGE_KEY }}" \
             -d "{\"label\":\"coverage\",\"message\":\"${pct}%\",\"color\":\"${color}\"}"
 
       - name: Upload test results

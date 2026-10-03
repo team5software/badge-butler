@@ -186,6 +186,7 @@ jobs:
           curl -sf -X PUT https://badges.team5software.de/badges/badge-butler-release \
             -H "Content-Type: application/json" \
             -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
+            -H "X-Badge-Key: ${{ secrets.BADGE_BUTLER_BADGE_KEY }}" \
             -d "{\"label\":\"release\",\"message\":\"v${{ needs.prerequisites.outputs.version }}\",\"color\":\"blue\"}"
 
       - name: Warn if badge update failed
