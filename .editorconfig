@@ -178,7 +178,7 @@ dotnet_diagnostic.ide0071.severity = warning
 # IDE0072: Add missing cases to switch expression
 dotnet_diagnostic.ide0072.severity = suggestion
 # IDE0073: Require file header
-file_header_template = Copyright (c) Daniel Baufeld.\nLicensed under the Elastic License 2.0.\nSee LICENSE file in the project root for full license terms.
+file_header_template = Copyright (c) Daniel Baufeld.\nLicensed under the MIT License.\nSee LICENSE file in the project root for full license terms.
 dotnet_diagnostic.ide0073.severity = warning
 # IDE0075: Simplify conditional expression
 dotnet_style_prefer_simplified_boolean_expressions = true

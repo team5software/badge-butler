@@ -5,4 +5,15 @@
   <Folder Name="/test/">
     <Project Path="test/BadgeButler.Api.Tests/BadgeButler.Api.Tests.csproj" />
   </Folder>
+  <Folder Name="/_meta/">
+    <File Path=".dockerignore" />
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+    <File Path="renovate.json5" />
+  </Folder>
 </Solution>

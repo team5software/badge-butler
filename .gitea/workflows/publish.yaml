@@ -74,11 +74,6 @@ jobs:
           username: ${{ gitea.actor }}
           password: ${{ secrets.T5S_PACKAGE_TOKEN }}
 
-      # annotations (index-level, on the multi-arch manifest list the tag actually points at)
-      # alongside the Dockerfile's own LABEL (per-platform image config, one level deeper) -
-      # GHCR's repo-auto-link reads the former for a multi-arch tag; the LABEL alone wasn't
-      # picked up. Source points at wherever this specific push actually lands - Gitea here,
-      # GitHub in the GHCR step below - rather than the same URL for both.
       - name: Build and push to Gitea
         uses: docker/build-push-action@v6
         with:
@@ -90,7 +85,7 @@ jobs:
           tags: ${{ steps.tags.outputs.gitea_tags }}
           annotations: |
             index:org.opencontainers.image.source=https://gitea.team5software.de/t5s/badge-butler
-            index:org.opencontainers.image.description=Stores and serves status badges (build, coverage, etc.) for repos
+            index:org.opencontainers.image.description=Stores and serves status badges
             index:org.opencontainers.image.licenses=MIT
 
       - name: Log in to GHCR (optional)
@@ -114,7 +109,7 @@ jobs:
           tags: ${{ steps.tags.outputs.ghcr_tags }}
           annotations: |
             index:org.opencontainers.image.source=https://github.com/team5software/badge-butler
-            index:org.opencontainers.image.description=Stores and serves status badges (build, coverage, etc.) for repos
+            index:org.opencontainers.image.description=Stores and serves status badges
             index:org.opencontainers.image.licenses=MIT
 
       - name: Warn if GHCR login failed
@@ -161,12 +156,6 @@ jobs:
         continue-on-error: true
         run: helm registry login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" -p "${{ secrets.GHCR_TOKEN }}"
 
-      # Chart.yaml's home/sources (baked into the pushed package's OCI annotations by `helm
-      # package`, not overridable per-push like docker buildx's --annotation) default to Gitea,
-      # the canonical source - correct for the push above, but GHCR only auto-links a package
-      # when that annotation resolves to a github.com repo it can see. Re-pointing and
-      # re-packaging here, after the Gitea push already used the original, gives GHCR its own
-      # correctly-sourced copy instead of the same Gitea-pointing one.
       - name: Re-point chart source to GitHub mirror for GHCR
         if: steps.ghcr_login.outcome == 'success'
         run: |
@@ -197,6 +186,7 @@ jobs:
           curl -sf -X PUT https://badges.team5software.de/badges/badge-butler-release \
             -H "Content-Type: application/json" \
             -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
+            -H "X-Badge-Key: ${{ secrets.BADGE_BUTLER_BADGE_KEY }}" \
             -d "{\"label\":\"release\",\"message\":\"v${{ needs.prerequisites.outputs.version }}\",\"color\":\"blue\"}"
 
       - name: Warn if badge update failed

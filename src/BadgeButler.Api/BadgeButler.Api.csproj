@@ -3,5 +3,14 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Scalar.AspNetCore" />
+    <PackageReference Include="SixLabors.Fonts" />
+  </ItemGroup>
+
+  <!-- Bundled rather than relying on SystemFonts/OS font discovery - the chiseled runtime image
+       has no fonts installed at all, and even a full image wouldn't have "Verdana" (Windows-only).
+       Ships alongside the app (dev, test, and published container alike) via CopyToOutputDirectory,
+       so measurement and rendering always use the exact same font file regardless of environment. -->
+  <ItemGroup>
+    <None Include="Fonts\*.ttf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
