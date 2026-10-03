@@ -121,6 +121,48 @@ public class BadgeSvgRendererTests
         resolved.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("696969", "FFFFFF")] // DimGray, the label background
+    [InlineData("0000FF", "FFFFFF")] // blue
+    [InlineData("000000", "FFFFFF")]
+    [InlineData("44CC11", "000000")] // "4c1" green - HSL lightness 0.43 picked white here
+    [InlineData("97CA00", "000000")]
+    [InlineData("DFB317", "000000")] // "running" yellow
+    [InlineData("FFFF00", "000000")] // yellow - HSL lightness 0.5, white would be 1.1:1
+    [InlineData("E05D44", "000000")] // red - HSL lightness 0.57
+    [InlineData("FFFFFF", "000000")]
+    public void ContrastingForeground_PicksHigherContrastOfBlackAndWhite(string background, string expected)
+    {
+        BadgeSvgRenderer.ContrastingForeground(background).Should().Be(expected);
+    }
+
+    [Fact]
+    public void Render_UsesWhiteTextOnTheDarkLabelBackground()
+    {
+        BadgeMetrics metrics = BadgeSvgRenderer.Measure("build", "passing");
+        string svg = BadgeSvgRenderer.Render("build", "passing", "44CC11", metrics);
+
+        ExtractTextFills(svg).Label.Should().Be("FFFFFF");
+    }
+
+    [Theory]
+    [InlineData("44CC11", "000000")]
+    [InlineData("0000FF", "FFFFFF")]
+    public void Render_UsesContrastingTextColorOnTheMessageBackground(string background, string expected)
+    {
+        BadgeMetrics metrics = BadgeSvgRenderer.Measure("build", "passing");
+        string svg = BadgeSvgRenderer.Render("build", "passing", background, metrics);
+
+        ExtractTextFills(svg).Message.Should().Be(expected);
+    }
+
+    private static (string Label, string Message) ExtractTextFills(string svg)
+    {
+        MatchCollection matches = Regex.Matches(svg, @"<text[^>]*\bfill=""#([0-9A-F]{6})""");
+        matches.Should().HaveCount(2);
+        return (matches[0].Groups[1].Value, matches[1].Groups[1].Value);
+    }
+
     private static int ExtractWidth(string svg)
     {
         Match match = Regex.Match(svg, @"<svg[^>]*\bwidth=""([\d.]+)""");

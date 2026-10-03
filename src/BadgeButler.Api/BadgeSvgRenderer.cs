@@ -58,19 +58,12 @@ public static class BadgeSvgRenderer
         float totalWidth = HorizontalPadding + metrics.LabelWidth + (HorizontalPadding * 2) + metrics.MessageWidth + HorizontalPadding;
         float totalHeight = VerticalPadding + metrics.FontHeight + VerticalPadding;
 
-        Color labelBackground = Color.DimGray;
-        Color labelForeground = labelBackground.GetBrightness() > 0.5 ? Color.White : Color.Black;
-        string labelBackgroundHex = $"{labelBackground.R:X2}{labelBackground.G:X2}{labelBackground.B:X2}";
-        string labelForegroundHex = $"{labelForeground.R:X2}{labelForeground.G:X2}{labelForeground.B:X2}";
+        string labelBackgroundHex = ToHex(Color.DimGray);
+        string labelForegroundHex = ContrastingForeground(labelBackgroundHex);
 
         // color is always a validated 6-hex-digit string by the time it reaches here (normalized
         // at insert/update via TryNormalizeColor, enforced again by the database CHECK constraint).
-        Color messageBackground = Color.FromArgb(
-            int.Parse(color[..2], NumberStyles.HexNumber),
-            int.Parse(color[2..4], NumberStyles.HexNumber),
-            int.Parse(color[4..6], NumberStyles.HexNumber));
-        Color messageForeground = messageBackground.GetBrightness() > 0.5 ? Color.White : Color.Black;
-        string messageForegroundHex = $"{messageForeground.R:X2}{messageForeground.G:X2}{messageForeground.B:X2}";
+        string messageForegroundHex = ContrastingForeground(color);
 
         float labelBoxWidth = metrics.LabelWidth + (HorizontalPadding * 2);
         float messageBoxWidth = metrics.MessageWidth + (HorizontalPadding * 2);
@@ -129,13 +122,41 @@ public static class BadgeSvgRenderer
             Color color = Color.FromKnownColor(known);
             if (!color.IsSystemColor)
             {
-                hex = $"{color.R:X2}{color.G:X2}{color.B:X2}";
+                hex = ToHex(color);
                 return true;
             }
         }
 
         return false;
     }
+
+    /// <summary>
+    /// Black ("000000") or white ("FFFFFF"), whichever has the higher WCAG 2 contrast ratio
+    /// against the given 6-digit hex background. Deliberately not <see cref="Color.GetBrightness"/>:
+    /// that's HSL lightness, (max + min) / 2, which puts most saturated colors near 0.5 regardless
+    /// of how light they look - e.g. yellow scores 0.5 there despite needing black text (19.6:1
+    /// vs 1.1:1 for white).
+    /// </summary>
+    public static string ContrastingForeground(string backgroundHex)
+    {
+        double luminance = RelativeLuminance(backgroundHex);
+        double contrastWithBlack = (luminance + 0.05) / 0.05;
+        double contrastWithWhite = 1.05 / (luminance + 0.05);
+        return contrastWithBlack >= contrastWithWhite ? "000000" : "FFFFFF";
+    }
+
+    private static double RelativeLuminance(string hex)
+    {
+        static double Linearize(string component)
+        {
+            double channel = int.Parse(component, NumberStyles.HexNumber, CultureInfo.InvariantCulture) / 255.0;
+            return channel <= 0.04045 ? channel / 12.92 : Math.Pow((channel + 0.055) / 1.055, 2.4);
+        }
+
+        return (0.2126 * Linearize(hex[..2])) + (0.7152 * Linearize(hex[2..4])) + (0.0722 * Linearize(hex[4..6]));
+    }
+
+    private static string ToHex(Color color) => $"{color.R:X2}{color.G:X2}{color.B:X2}";
 
     private static string ExpandHex(string hex) =>
         hex.Length == 6
