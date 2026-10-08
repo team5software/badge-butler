@@ -4,11 +4,13 @@
 # Required repo secrets:
 #   GITEA_TOKEN            - checkout and creating the Gitea release
 #   T5S_PACKAGE_TOKEN      - Gitea token with package:write, for docker/helm login
-#   GHCR_USERNAME          - GitHub user/org to push images and charts under
 #   GHCR_TOKEN             - GitHub PAT with write:packages; also used by git-cliff-action, whose
 #                            download through the GitHub API rejects Gitea's own token
 #   BADGE_BUTLER_API_KEY   - release badge update
 #   BADGE_BUTLER_BADGE_KEY - release badge update
+#
+# Required variable (not a secret, or its value gets masked in logs and summaries):
+#   GHCR_USERNAME          - GitHub user/org to push images and charts under
 name: Package & Publish
 on:
   push:
@@ -102,8 +104,8 @@ jobs:
             echo "TAGEOF"
 
             echo "ghcr_tags<<TAGEOF"
-            echo "ghcr.io/${{ secrets.GHCR_USERNAME }}/badge-butler:${VERSION}"
-            echo "ghcr.io/${{ secrets.GHCR_USERNAME }}/badge-butler:latest"
+            echo "ghcr.io/${{ vars.GHCR_USERNAME }}/badge-butler:${VERSION}"
+            echo "ghcr.io/${{ vars.GHCR_USERNAME }}/badge-butler:latest"
             echo "TAGEOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -141,7 +143,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ secrets.GHCR_USERNAME }}
+          username: ${{ vars.GHCR_USERNAME }}
           password: ${{ secrets.GHCR_TOKEN }}
 
       - name: Build and push to GHCR
@@ -207,7 +209,7 @@ jobs:
         id: ghcr_login
         if: gitea.event_name == 'push'
         continue-on-error: true
-        run: helm registry login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" -p "${{ secrets.GHCR_TOKEN }}"
+        run: helm registry login ghcr.io -u "${{ vars.GHCR_USERNAME }}" -p "${{ secrets.GHCR_TOKEN }}"
 
       - name: Re-point chart source to GitHub mirror for GHCR
         if: steps.ghcr_login.outcome == 'success'
@@ -218,7 +220,7 @@ jobs:
 
       - name: Push chart to GHCR
         if: steps.ghcr_login.outcome == 'success'
-        run: helm push "badge-butler-${VERSION}.tgz" "oci://ghcr.io/${{ secrets.GHCR_USERNAME }}/charts"
+        run: helm push "badge-butler-${VERSION}.tgz" "oci://ghcr.io/${{ vars.GHCR_USERNAME }}/charts"
 
       - name: Warn if GHCR login failed
         if: steps.ghcr_login.outcome == 'failure'
