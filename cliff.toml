@@ -1,0 +1,53 @@
+[remote.gitea]
+owner = "t5s"
+repo = "badge-butler"
+api_url = "https://gitea.team5software.de"
+
+[changelog]
+body = """
+{%- set server = "https://gitea.team5software.de" %}
+{%- for group in ["Features", "Fixes", "Dependencies", "Miscellaneous", "CI"] %}
+{%- set group_commits = commits | filter(attribute="group", value=group) %}
+{%- if group_commits %}
+### {{ group }}
+{% for commit in group_commits %}
+{%- set login = commit.remote.pr_author | default(value=commit.remote.username) %}
+- {% if commit.breaking %}:warning: {% endif %}{{ commit.raw_message | split(pat="\n") | first }}\
+{% if commit.raw_message is not containing("/pulls/") %} ([{{ commit.id | truncate(length=7, end="") }}]({{ server }}/t5s/badge-butler/commit/{{ commit.id }})){% endif %} by \
+{% if login %}[{{ login }}]({{ server }}/{{ login }}){% else %}{{ commit.author.name }}{% endif %}
+{%- endfor %}
+{% endif %}
+{%- endfor %}
+{%- set contributors = gitea.contributors | filter(attribute="username") %}
+{%- set new_contributors = contributors | filter(attribute="is_first_time", value=true) %}
+{%- if new_contributors %}
+### New Contributors
+{% for contributor in new_contributors %}
+- [{{ contributor.username }}]({{ server }}/{{ contributor.username }}) made their first contribution\
+{% if contributor.pr_number %} in [#{{ contributor.pr_number }}]({{ server }}/t5s/badge-butler/pulls/{{ contributor.pr_number }}){% endif %}
+{%- endfor %}
+{% endif %}
+{%- if contributors %}
+### Contributors
+{% for contributor in contributors %}
+- [{{ contributor.username }}]({{ server }}/{{ contributor.username }})
+{%- endfor %}
+{% endif %}
+"""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+tag_pattern = "v[0-9]+\\.[0-9]+\\.[0-9]+"
+commit_preprocessors = [
+  { pattern = '\s*\(#(\d+)\)', replace = " ([#${1}](https://gitea.team5software.de/t5s/badge-butler/pulls/${1}))" },
+]
+commit_parsers = [
+  { message = "^release", skip = true },
+  { message = "^\\w+\\(deps\\)", group = "Dependencies" },
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Fixes" },
+  { message = "^ci", group = "CI" },
+  { message = ".*", group = "Miscellaneous" },
+]

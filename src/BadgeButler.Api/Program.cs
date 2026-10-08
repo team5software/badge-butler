@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 using Scalar.AspNetCore;
 
@@ -46,7 +47,7 @@ else
 {
     string connectionString = builder.Configuration.GetConnectionString("BadgeButler")
                               ?? throw new InvalidOperationException("Missing required configuration: ConnectionStrings:BadgeButler");
-    builder.Services.AddSingleton<IApplicationStorage>(new PostgresStorage(connectionString));
+    builder.Services.AddSingleton<IApplicationStorage>(services => new PostgresStorage(connectionString, services.GetRequiredService<ILogger<PostgresStorage>>()));
 }
 
 WebApplication app = builder.Build();
@@ -65,7 +66,8 @@ app.MapHealthChecks("/health");
 app.MapBadges();
 
 IApplicationStorage applicationStorage = app.Services.GetRequiredService<IApplicationStorage>();
-if (await applicationStorage.InitializeAsync(BadgeSvgRenderer.CalculateAppearance) == InitializationResult.Failed)
+AppearanceCalculator appearanceCalculator = new(BadgeSvgRenderer.AppearanceFingerprint, BadgeSvgRenderer.CalculateAppearance);
+if (await applicationStorage.InitializeAsync(appearanceCalculator) == InitializationResult.Failed)
 {
     throw new InvalidOperationException("Database initialization failed - schema version is newer than this build supports, or a migration step failed.");
 }

@@ -8,6 +8,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.Extensions.Logging;
+
 using Npgsql;
 
 using T5S.BadgeButler.Api.Models;
@@ -17,17 +19,18 @@ using T5S.BadgeButler.Api.RequestDtos;
 
 namespace T5S.BadgeButler.Api.Persistence;
 
-public sealed class PostgresStorage(string connectionString) : DatabaseStorage(connectionString)
+public sealed class PostgresStorage(string connectionString, ILogger<PostgresStorage> logger) : DatabaseStorage(connectionString)
 {
     private const long InitializationLockKey = 0x4261646765427574;
 
     private static readonly Dictionary<int, IMigration> Migrations = new()
     {
         { 1, new InitialCreate() },
-        { 2, new RemovePositionAndHeight_AddForegroundColor() }
+        { 2, new RemovePositionAndHeight_AddForegroundColor() },
+        { 3, new RenameConstantsFingerprintToAppearanceFingerprint() }
     };
 
-    public override async Task<InitializationResult> InitializeAsync(Func<BadgeWrite, BadgeAppearance> calculateAppearance, CancellationToken cancellationToken = default)
+    public override async Task<InitializationResult> InitializeAsync(AppearanceCalculator appearanceCalculator, CancellationToken cancellationToken = default)
     {
         await using NpgsqlConnection connection = new(ConnectionString);
         await connection.OpenAsync(cancellationToken);
@@ -40,57 +43,71 @@ public sealed class PostgresStorage(string connectionString) : DatabaseStorage(c
             await lockCommand.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        SchemaInfo? schemaInfo;
-        await using (NpgsqlCommand command = connection.CreateCommand())
+        // Only the version is read up front: older schema versions name schema_info's other columns
+        // differently, so the fingerprint is read once the schema is current.
+        int? storedVersion = await ReadSchemaVersionAsync(connection, cancellationToken);
+        if (storedVersion > CurrentSchemaVersion)
         {
-            command.CommandText = "SELECT to_regclass('schema_info') IS NOT NULL";
-            bool hasSchemaInfoTable;
-            await using (NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken))
-            {
-                await reader.ReadAsync(cancellationToken);
-                hasSchemaInfoTable = reader.GetBoolean(0);
-            }
-
-            if (!hasSchemaInfoTable)
-            {
-                schemaInfo = null;
-            }
-            else
-            {
-                command.CommandText = "SELECT schema_version, constants_fingerprint FROM schema_info WHERE id = 1";
-                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
-                schemaInfo = await reader.ReadAsync(cancellationToken)
-                    ? ReadSchemaInfoAsync(reader)
-                    : null;
-            }
-        }
-
-        bool migrationResult = schemaInfo is null
-            ? await CreateDatabaseAsync(connection, cancellationToken)
-            : await UpdateDatabaseAsync(connection, schemaInfo.SchemaVersion, cancellationToken);
-        if (!migrationResult)
-        {
+            logger.LogError(
+                "Database schema version {StoredVersion} is newer than this build supports ({CurrentVersion})",
+                storedVersion,
+                CurrentSchemaVersion);
             await transaction.RollbackAsync(cancellationToken);
             return InitializationResult.Failed;
         }
 
-        if (schemaInfo is not null && !schemaInfo.ConstantsFingerprint.Equals(BadgeSvgRenderer.MeasurementFingerprint))
+        bool migrationResult = storedVersion is null
+            ? await CreateDatabaseAsync(connection, cancellationToken)
+            : await UpdateDatabaseAsync(connection, storedVersion.Value, cancellationToken);
+        if (!migrationResult)
         {
-            await RecalculateAppearanceAsync(connection, calculateAppearance, cancellationToken);
+            logger.LogError("Migrating the database schema from version {StoredVersion} to {CurrentVersion} failed", storedVersion, CurrentSchemaVersion);
+            await transaction.RollbackAsync(cancellationToken);
+            return InitializationResult.Failed;
         }
+
+        // A freshly created database has no badges to recalculate. Otherwise recalculate after any
+        // migration (it may have added or changed a stored appearance column) or fingerprint change.
+        bool migrated = storedVersion < CurrentSchemaVersion;
+        bool fingerprintChanged = storedVersion is not null
+                                  && await ReadAppearanceFingerprintAsync(connection, cancellationToken) != appearanceCalculator.Fingerprint;
+        int? recalculatedCount = migrated || fingerprintChanged
+            ? await RecalculateAppearanceAsync(connection, appearanceCalculator.Calculate, cancellationToken)
+            : null;
 
         await using (NpgsqlCommand schemaInfoUpdate = connection.CreateCommand())
         {
             schemaInfoUpdate.CommandText = """
-                                           INSERT INTO schema_info (id, schema_version, constants_fingerprint) VALUES (1, $1, $2)
-                                           ON CONFLICT (id) DO UPDATE SET schema_version = EXCLUDED.schema_version, constants_fingerprint = EXCLUDED.constants_fingerprint
+                                           INSERT INTO schema_info (id, schema_version, appearance_fingerprint) VALUES (1, $1, $2)
+                                           ON CONFLICT (id) DO UPDATE SET schema_version = EXCLUDED.schema_version, appearance_fingerprint = EXCLUDED.appearance_fingerprint
                                            """;
             schemaInfoUpdate.Parameters.AddWithValue(CurrentSchemaVersion);
-            schemaInfoUpdate.Parameters.AddWithValue(BadgeSvgRenderer.MeasurementFingerprint);
+            schemaInfoUpdate.Parameters.AddWithValue(appearanceCalculator.Fingerprint);
             await schemaInfoUpdate.ExecuteNonQueryAsync(cancellationToken);
         }
 
         await transaction.CommitAsync(cancellationToken);
+
+        // Logged after the commit, so these never describe changes that were rolled back.
+        if (storedVersion is null)
+        {
+            logger.LogInformation("Created database schema version {CurrentVersion}", CurrentSchemaVersion);
+        }
+        else if (migrated)
+        {
+            logger.LogInformation("Upgraded database schema from version {StoredVersion} to {CurrentVersion}", storedVersion, CurrentSchemaVersion);
+        }
+
+        if (recalculatedCount is not null)
+        {
+            // The noun is a placeholder of its own so the message template stays constant.
+            logger.LogInformation(
+                "Recalculated the appearance of {BadgeCount} {BadgeNoun} ({Reason})",
+                recalculatedCount,
+                recalculatedCount == 1 ? "badge" : "badges",
+                migrated ? "schema upgraded" : "appearance fingerprint changed");
+        }
+
         return InitializationResult.Success;
     }
 
@@ -186,8 +203,6 @@ public sealed class PostgresStorage(string connectionString) : DatabaseStorage(c
 
     private static async Task<bool> UpdateDatabaseAsync(NpgsqlConnection connection, int version, CancellationToken cancellationToken)
     {
-        if (version > CurrentSchemaVersion) { return false; }
-
         for (int i = version + 1; i <= CurrentSchemaVersion; i++)
         {
             IMigration migration = Migrations[i];
@@ -197,7 +212,7 @@ public sealed class PostgresStorage(string connectionString) : DatabaseStorage(c
         return true;
     }
 
-    private static async Task RecalculateAppearanceAsync(NpgsqlConnection connection, Func<BadgeWrite, BadgeAppearance> calculateAppearance, CancellationToken cancellationToken)
+    private static async Task<int> RecalculateAppearanceAsync(NpgsqlConnection connection, Func<BadgeWrite, BadgeAppearance> calculateAppearance, CancellationToken cancellationToken)
     {
         Dictionary<string, BadgeAppearance> appearances = new();
         await using (NpgsqlCommand selectCommand = connection.CreateCommand())
@@ -215,7 +230,7 @@ public sealed class PostgresStorage(string connectionString) : DatabaseStorage(c
             }
         }
 
-        if (appearances.Count == 0) { return; }
+        if (appearances.Count == 0) { return 0; }
 
         await using NpgsqlCommand updateCommand = connection.CreateCommand();
         updateCommand.CommandText = """
@@ -232,6 +247,28 @@ public sealed class PostgresStorage(string connectionString) : DatabaseStorage(c
         updateCommand.Parameters.AddWithValue(appearances.Select(item => item.Value.LabelWidth).ToArray());
         updateCommand.Parameters.AddWithValue(appearances.Select(item => item.Value.MessageWidth).ToArray());
         await updateCommand.ExecuteNonQueryAsync(cancellationToken);
+        return appearances.Count;
+    }
+
+    /// <summary>The stored schema version, or null when there is no schema_info table or row.</summary>
+    private static async Task<int?> ReadSchemaVersionAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
+        await using NpgsqlCommand command = connection.CreateCommand();
+        command.CommandText = "SELECT to_regclass('schema_info') IS NOT NULL";
+        if (await command.ExecuteScalarAsync(cancellationToken) is not true)
+        {
+            return null;
+        }
+
+        command.CommandText = "SELECT schema_version FROM schema_info WHERE id = 1";
+        return await command.ExecuteScalarAsync(cancellationToken) as int?;
+    }
+
+    private static async Task<string?> ReadAppearanceFingerprintAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    {
+        await using NpgsqlCommand command = connection.CreateCommand();
+        command.CommandText = "SELECT appearance_fingerprint FROM schema_info WHERE id = 1";
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
     }
 
     private static async Task<(bool Found, string? AccessKey)> GetAccessKeyAsync(NpgsqlConnection connection, string key, CancellationToken cancellationToken)
@@ -249,9 +286,6 @@ public sealed class PostgresStorage(string connectionString) : DatabaseStorage(c
         return (true, await reader.IsDBNullAsync(0, cancellationToken) ? null : reader.GetString(0));
     }
 
-    private static SchemaInfo ReadSchemaInfoAsync(NpgsqlDataReader reader) => new(
-        reader.GetInt32(0),
-        reader.GetString(1));
 
     private static Badge ReadBadge(string key, NpgsqlDataReader reader) => new(
         key,

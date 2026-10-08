@@ -38,13 +38,15 @@
 	</ItemGroup>
 
 	<!-- Test specific ItemGroup
-	 - Default test packages including MTP, xunit, coverlet, TRX-extension, AwesomeAssertions
+	 - Default test packages including xunit, coverlet, TRX-extension, AwesomeAssertions
+	 - Microsoft.Testing.Platform is deliberately not referenced: xunit, coverlet and the TRX
+	   extension each declare the minimum version they need, and NuGet picks the highest. A direct
+	   reference would win over those and break whichever package needs a newer one.
 	-->
 	<ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
 		<PackageReference Include="AwesomeAssertions" />
 		<PackageReference Include="coverlet.MTP" />
 		<PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
-		<PackageReference Include="Microsoft.Testing.Platform" />
 		<PackageReference Include="xunit.v3" />
 	</ItemGroup>
 </Project>
