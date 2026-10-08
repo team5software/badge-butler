@@ -1,12 +1,21 @@
-# Publishes the container image and Helm chart on vX.Y.Z tags - image tagged with the
-# version and "latest", chart packaged/pushed at that version.
+# One pipeline for packaging, two modes:
+# - vX.Y.Z tags: test, then build and push the container image (tagged with the version and
+#   "latest") and the Helm chart (at that version) to Gitea, and to GHCR when configured.
+# - Pull requests: the same image and chart builds, without logins or pushes, so a broken
+#   Dockerfile, chart or publish-only action bump (e.g. a Renovate PR) fails the PR instead of
+#   the next release. Tests are skipped there - build.yaml already runs them on every PR.
+# Every login/push step is gated on needs.prerequisites.outputs.release.
+#
+# No paths filter on purpose: as required checks in branch protection, skipped PR runs would
+# leave PRs that don't touch the Dockerfile or chart stuck waiting for them.
 #
 # Required repo secrets beyond the existing GITEA_TOKEN (checkout):
 #   T5S_PACKAGE_TOKEN  - Gitea access token with package:write, for docker/helm login
 #   GHCR_USERNAME      - GitHub username/org to push under
 #   GHCR_TOKEN         - GitHub PAT with write:packages
-name: Publish
+name: Package & Publish
 on:
+  pull_request:
   push:
     tags: ["v*.*.*"]
 
@@ -16,6 +25,7 @@ jobs:
     permissions:
       contents: read
     outputs:
+      release: ${{ steps.version.outputs.release }}
       version: ${{ steps.version.outputs.version }}
     # Same Postgres service as build.yaml - the PostgresStorage tests fail rather than skip in CI.
     services:
@@ -28,18 +38,32 @@ jobs:
     steps:
       - name: Determine version
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*)
+              echo "release=true" >> "$GITHUB_OUTPUT"
+              echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              echo "version=0.0.0-pr" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
       - name: Checkout
+        if: steps.version.outputs.release == 'true'
         uses: actions/checkout@v7
         with:
           token: ${{ secrets.GITEA_TOKEN }}
 
       - name: Setup .NET
+        if: steps.version.outputs.release == 'true'
         uses: actions/setup-dotnet@v6
       - name: Restore
+        if: steps.version.outputs.release == 'true'
         run: dotnet restore BadgeButler.slnx
       - name: Wait for Postgres
+        if: steps.version.outputs.release == 'true'
         run: |
           for i in $(seq 1 30); do
             (echo > /dev/tcp/postgres/5432) 2>/dev/null && exit 0
@@ -48,6 +72,7 @@ jobs:
           echo "Postgres service did not come up within 60s" >&2
           exit 1
       - name: Test
+        if: steps.version.outputs.release == 'true'
         run: dotnet test BadgeButler.slnx --no-restore -c Release
 
   docker-image:
@@ -64,6 +89,7 @@ jobs:
 
       - name: Compute image tags
         id: tags
+        if: needs.prerequisites.outputs.release == 'true'
         run: |
           VERSION="${{ needs.prerequisites.outputs.version }}"
           {
@@ -84,19 +110,21 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Gitea registry
+        if: needs.prerequisites.outputs.release == 'true'
         uses: docker/login-action@v3
         with:
           registry: gitea.team5software.de
           username: ${{ gitea.actor }}
           password: ${{ secrets.T5S_PACKAGE_TOKEN }}
 
-      - name: Build and push to Gitea
+      # On PRs this is the build-only check: no tags, no push.
+      - name: Build (and push to Gitea on release)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: src/BadgeButler.Api/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ needs.prerequisites.outputs.release == 'true' }}
           provenance: false
           tags: ${{ steps.tags.outputs.gitea_tags }}
           annotations: |
@@ -106,6 +134,7 @@ jobs:
 
       - name: Log in to GHCR (optional)
         id: ghcr_login
+        if: needs.prerequisites.outputs.release == 'true'
         continue-on-error: true
         uses: docker/login-action@v3
         with:
@@ -151,7 +180,11 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
-      - name: Set chart/app version from tag
+      - name: Lint chart
+        run: helm lint charts/badge-butler
+
+      # On PRs the version is 0.0.0-pr, only so the package step has something valid to stamp.
+      - name: Set chart/app version
         env:
           VERSION: ${{ needs.prerequisites.outputs.version }}
         run: |
@@ -162,13 +195,16 @@ jobs:
         run: helm package charts/badge-butler --destination .
 
       - name: Log in to Gitea registry
+        if: needs.prerequisites.outputs.release == 'true'
         run: helm registry login gitea.team5software.de -u "${{ gitea.actor }}" -p "${{ secrets.T5S_PACKAGE_TOKEN }}"
 
       - name: Push chart to Gitea
+        if: needs.prerequisites.outputs.release == 'true'
         run: helm push "badge-butler-${{ needs.prerequisites.outputs.version }}.tgz" oci://gitea.team5software.de/t5s/charts
 
       - name: Log in to GHCR (optional)
         id: ghcr_login
+        if: needs.prerequisites.outputs.release == 'true'
         continue-on-error: true
         run: helm registry login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" -p "${{ secrets.GHCR_TOKEN }}"
 
@@ -193,6 +229,7 @@ jobs:
 
   finish-line:
     needs: [ prerequisites, docker-image, helm-chart ]
+    if: needs.prerequisites.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Update release badge
