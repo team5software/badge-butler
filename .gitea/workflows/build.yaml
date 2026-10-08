@@ -9,6 +9,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # Real Postgres for the PostgresStorage integration tests, started by the runner next to the
+    # job container (reachable as "postgres") - the job itself needs no Docker socket.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+    env:
+      BADGEBUTLER_TEST_POSTGRES: Host=postgres;Port=5432;Username=postgres;Password=postgres;Database=postgres
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -38,6 +47,16 @@ jobs:
       - name: Build
         id: build
         run: dotnet build BadgeButler.slnx --no-restore -c Release
+
+      # Postgres only opens its TCP port once initdb is done and the real server is up.
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            (echo > /dev/tcp/postgres/5432) 2>/dev/null && exit 0
+            sleep 2
+          done
+          echo "Postgres service did not come up within 60s" >&2
+          exit 1
 
       - name: Test
         id: test

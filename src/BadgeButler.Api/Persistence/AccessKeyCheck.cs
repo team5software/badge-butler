@@ -7,10 +7,8 @@ using System.Text;
 
 namespace T5S.BadgeButler.Api.Persistence;
 
-/// <summary>Shared by every IBadgeStore implementation so the rule is identical everywhere.</summary>
 internal static class AccessKeyCheck
 {
-    /// <summary>No key set on the badge -> anyone may write. Key set -> must match, fixed-time.</summary>
     public static bool IsAuthorized(string? storedAccessKey, string? providedAccessKey)
     {
         if (storedAccessKey is null)

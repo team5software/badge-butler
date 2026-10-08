@@ -6,22 +6,23 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using T5S.BadgeButler.Api.Models;
 using T5S.BadgeButler.Api.Persistence;
 
 using Xunit;
 
 namespace T5S.BadgeButler.Api.Tests;
 
-public class InMemoryBadgeStoreTests
+public class InMemoryStorageTests
 {
-    private static readonly BadgeMetrics Metrics = new(10, 20, 1, 2, 15);
+    private static BadgeAppearance Appearance(string background) => new(10, 20, background, "FFFFFF");
 
     private static System.Threading.CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
     public async Task GetAsync_ReturnsNull_WhenBadgeDoesNotExist()
     {
-        InMemoryBadgeStore store = new InMemoryBadgeStore();
+        InMemoryStorage store = new();
 
         Badge? badge = await store.GetAsync("missing", Ct);
 
@@ -31,38 +32,38 @@ public class InMemoryBadgeStoreTests
     [Fact]
     public async Task UpsertAsync_CreatesANewBadge()
     {
-        InMemoryBadgeStore store = new InMemoryBadgeStore();
+        InMemoryStorage store = new();
 
-        UpsertResult result = await store.UpsertAsync("k1", "label", "message", "0000FF", Metrics, providedAccessKey: null, Ct);
+        UpsertResult result = await store.UpsertAsync("k1", "label", "message", Appearance("0000FF"), providedAccessKey: null, Ct);
         Badge? badge = await store.GetAsync("k1", Ct);
 
         result.Should().Be(UpsertResult.Created);
         badge.Should().NotBeNull();
         badge!.Label.Should().Be("label");
-        badge.Color.Should().Be("0000FF");
+        badge.Appearance.Should().Be(Appearance("0000FF"));
     }
 
     [Fact]
     public async Task UpsertAsync_ReplacesAnExistingBadge()
     {
-        InMemoryBadgeStore store = new InMemoryBadgeStore();
-        await store.UpsertAsync("k1", "old", "old", "0000FF", Metrics, providedAccessKey: null, Ct);
+        InMemoryStorage store = new();
+        await store.UpsertAsync("k1", "old", "old", Appearance("0000FF"), providedAccessKey: null, Ct);
 
-        UpsertResult result = await store.UpsertAsync("k1", "new", "new", "008000", Metrics, providedAccessKey: null, Ct);
+        UpsertResult result = await store.UpsertAsync("k1", "new", "new", Appearance("008000"), providedAccessKey: null, Ct);
         Badge? badge = await store.GetAsync("k1", Ct);
 
         result.Should().Be(UpsertResult.Updated);
         badge!.Label.Should().Be("new");
-        badge.Color.Should().Be("008000");
+        badge.Appearance.Should().Be(Appearance("008000"));
     }
 
     [Fact]
     public async Task UpsertAsync_OnUnprotectedBadge_SetsTheKeyFromWhateverIsProvided()
     {
-        InMemoryBadgeStore store = new InMemoryBadgeStore();
-        await store.UpsertAsync("k1", "a", "b", "0000FF", Metrics, providedAccessKey: null, Ct);
+        InMemoryStorage store = new();
+        await store.UpsertAsync("k1", "a", "b", Appearance("0000FF"), providedAccessKey: null, Ct);
 
-        UpsertResult result = await store.UpsertAsync("k1", "a", "b", "0000FF", Metrics, providedAccessKey: "secret", Ct);
+        UpsertResult result = await store.UpsertAsync("k1", "a", "b", Appearance("0000FF"), providedAccessKey: "secret", Ct);
         Badge? badge = await store.GetAsync("k1", Ct);
 
         result.Should().Be(UpsertResult.Updated);
@@ -72,10 +73,10 @@ public class InMemoryBadgeStoreTests
     [Fact]
     public async Task UpsertAsync_OnProtectedBadge_RejectsWrongKey()
     {
-        InMemoryBadgeStore store = new InMemoryBadgeStore();
-        await store.UpsertAsync("k1", "a", "b", "0000FF", Metrics, providedAccessKey: "secret", Ct);
+        InMemoryStorage store = new();
+        await store.UpsertAsync("k1", "a", "b", Appearance("0000FF"), providedAccessKey: "secret", Ct);
 
-        UpsertResult result = await store.UpsertAsync("k1", "a", "c", "0000FF", Metrics, providedAccessKey: "wrong", Ct);
+        UpsertResult result = await store.UpsertAsync("k1", "a", "c", Appearance("0000FF"), providedAccessKey: "wrong", Ct);
         Badge? badge = await store.GetAsync("k1", Ct);
 
         result.Should().Be(UpsertResult.Unauthorized);
@@ -85,10 +86,10 @@ public class InMemoryBadgeStoreTests
     [Fact]
     public async Task UpsertAsync_OnProtectedBadge_AllowsMatchingKey()
     {
-        InMemoryBadgeStore store = new InMemoryBadgeStore();
-        await store.UpsertAsync("k1", "a", "b", "0000FF", Metrics, providedAccessKey: "secret", Ct);
+        InMemoryStorage store = new();
+        await store.UpsertAsync("k1", "a", "b", Appearance("0000FF"), providedAccessKey: "secret", Ct);
 
-        UpsertResult result = await store.UpsertAsync("k1", "a", "c", "0000FF", Metrics, providedAccessKey: "secret", Ct);
+        UpsertResult result = await store.UpsertAsync("k1", "a", "c", Appearance("0000FF"), providedAccessKey: "secret", Ct);
 
         result.Should().Be(UpsertResult.Updated);
     }
@@ -96,7 +97,7 @@ public class InMemoryBadgeStoreTests
     [Fact]
     public async Task DeleteAsync_ReturnsNotFound_WhenBadgeDoesNotExist()
     {
-        InMemoryBadgeStore store = new InMemoryBadgeStore();
+        InMemoryStorage store = new();
 
         DeleteResult result = await store.DeleteAsync("missing", providedAccessKey: null, Ct);
 
@@ -106,8 +107,8 @@ public class InMemoryBadgeStoreTests
     [Fact]
     public async Task DeleteAsync_OnProtectedBadge_RejectsMissingKey()
     {
-        InMemoryBadgeStore store = new InMemoryBadgeStore();
-        await store.UpsertAsync("k1", "a", "b", "0000FF", Metrics, providedAccessKey: "secret", Ct);
+        InMemoryStorage store = new();
+        await store.UpsertAsync("k1", "a", "b", Appearance("0000FF"), providedAccessKey: "secret", Ct);
 
         DeleteResult result = await store.DeleteAsync("k1", providedAccessKey: null, Ct);
         Badge? badge = await store.GetAsync("k1", Ct);
@@ -119,8 +120,8 @@ public class InMemoryBadgeStoreTests
     [Fact]
     public async Task DeleteAsync_OnProtectedBadge_AllowsMatchingKey()
     {
-        InMemoryBadgeStore store = new InMemoryBadgeStore();
-        await store.UpsertAsync("k1", "a", "b", "0000FF", Metrics, providedAccessKey: "secret", Ct);
+        InMemoryStorage store = new();
+        await store.UpsertAsync("k1", "a", "b", Appearance("0000FF"), providedAccessKey: "secret", Ct);
 
         DeleteResult result = await store.DeleteAsync("k1", providedAccessKey: "secret", Ct);
         Badge? badge = await store.GetAsync("k1", Ct);
@@ -132,8 +133,8 @@ public class InMemoryBadgeStoreTests
     [Fact]
     public async Task DeleteAsync_OnUnprotectedBadge_AllowsAnyone()
     {
-        InMemoryBadgeStore store = new InMemoryBadgeStore();
-        await store.UpsertAsync("k1", "a", "b", "0000FF", Metrics, providedAccessKey: null, Ct);
+        InMemoryStorage store = new();
+        await store.UpsertAsync("k1", "a", "b", Appearance("0000FF"), providedAccessKey: null, Ct);
 
         DeleteResult result = await store.DeleteAsync("k1", providedAccessKey: "whatever", Ct);
 

@@ -48,8 +48,8 @@ public class ApiKeyAuthenticationHandler(IOptionsMonitor<ApiKeyAuthenticationOpt
     private AuthenticationTicket GetStaticTicket()
     {
         Claim[] claims = new[] { new Claim(ClaimTypes.Name, "static-client"), new Claim("client_id", "static-client"), };
-        ClaimsIdentity identity = new ClaimsIdentity(claims, Scheme.Name);
-        ClaimsPrincipal principal = new ClaimsPrincipal(identity);
+        ClaimsIdentity identity = new(claims, Scheme.Name);
+        ClaimsPrincipal principal = new(identity);
         return new AuthenticationTicket(principal, Scheme.Name);
     }
 }
