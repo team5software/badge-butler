@@ -15,7 +15,8 @@ namespace T5S.BadgeButler.Api.Tests;
 /// <summary>
 /// A throwaway database on the Postgres server named by BADGEBUTLER_TEST_POSTGRES (a connection
 /// string whose user may CREATE DATABASE), one per test so tests can't see each other's tables.
-/// Skips the calling test when the variable isn't set.
+/// Skips the calling test when the variable isn't set - except in CI (CI=true), where it fails
+/// instead, so a missing Postgres service can't let the pipeline go green with storage untested.
 /// </summary>
 internal sealed class PostgresTestDatabase : IAsyncDisposable
 {
@@ -36,6 +37,11 @@ internal sealed class PostgresTestDatabase : IAsyncDisposable
     public static async Task<PostgresTestDatabase> CreateAsync(CancellationToken ct)
     {
         string? server = Environment.GetEnvironmentVariable(ServerVariable);
+        if (string.IsNullOrEmpty(server) && Environment.GetEnvironmentVariable("CI") == "true")
+        {
+            throw new InvalidOperationException($"{ServerVariable} must be set in CI - is the postgres service missing from the workflow?");
+        }
+
         Assert.SkipWhen(string.IsNullOrEmpty(server), $"Set {ServerVariable} to a Postgres connection string to run the Postgres store tests.");
 
         PostgresTestDatabase database = new(server!, $"badgebutler_test_{Guid.NewGuid():N}");
