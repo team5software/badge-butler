@@ -1,23 +1,19 @@
-# One pipeline for packaging, two modes:
-# - vX.Y.Z tags: test, then build and push the container image (tagged with the version and
-#   "latest") and the Helm chart (at that version) to Gitea, and to GHCR when configured.
-# - Pull requests: the same image and chart builds, without logins or pushes, so a broken
-#   Dockerfile, chart or publish-only action bump (e.g. a Renovate PR) fails the PR instead of
-#   the next release. Tests are skipped there - build.yaml already runs them on every PR.
-# Every login/push step is gated on needs.prerequisites.outputs.release.
+# Push to main (the merged "release: vX.Y.Z" PR): test, push image and chart, create the release.
+# Pull requests: build image and chart without pushing; PRs into main also preview the release notes.
 #
-# No paths filter on purpose: as required checks in branch protection, skipped PR runs would
-# leave PRs that don't touch the Dockerfile or chart stuck waiting for them.
-#
-# Required repo secrets beyond the existing GITEA_TOKEN (checkout):
-#   T5S_PACKAGE_TOKEN  - Gitea access token with package:write, for docker/helm login
-#   GHCR_USERNAME      - GitHub username/org to push under
-#   GHCR_TOKEN         - GitHub PAT with write:packages
+# Required repo secrets:
+#   GITEA_TOKEN            - checkout and creating the Gitea release
+#   T5S_PACKAGE_TOKEN      - Gitea token with package:write, for docker/helm login
+#   GHCR_USERNAME          - GitHub user/org to push images and charts under
+#   GHCR_TOKEN             - GitHub PAT with write:packages; also used by git-cliff-action, whose
+#                            download through the GitHub API rejects Gitea's own token
+#   BADGE_BUTLER_API_KEY   - release badge update
+#   BADGE_BUTLER_BADGE_KEY - release badge update
 name: Package & Publish
 on:
-  pull_request:
   push:
-    tags: ["v*.*.*"]
+    branches: [main]
+  pull_request:
 
 jobs:
   prerequisites:
@@ -25,9 +21,7 @@ jobs:
     permissions:
       contents: read
     outputs:
-      release: ${{ steps.version.outputs.release }}
       version: ${{ steps.version.outputs.version }}
-    # Same Postgres service as build.yaml - the PostgresStorage tests fail rather than skip in CI.
     services:
       postgres:
         image: postgres:18
@@ -36,34 +30,43 @@ jobs:
     env:
       BADGEBUTLER_TEST_POSTGRES: Host=postgres;Port=5432;Username=postgres;Password=postgres;Database=postgres
     steps:
-      - name: Determine version
-        id: version
-        run: |
-          case "$GITHUB_REF" in
-            refs/tags/v*)
-              echo "release=true" >> "$GITHUB_OUTPUT"
-              echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "release=false" >> "$GITHUB_OUTPUT"
-              echo "version=0.0.0-pr" >> "$GITHUB_OUTPUT"
-              ;;
-          esac
-
       - name: Checkout
-        if: steps.version.outputs.release == 'true'
         uses: actions/checkout@v7
         with:
           token: ${{ secrets.GITEA_TOKEN }}
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        if: gitea.event_name == 'push' || gitea.base_ref == 'main'
+        env:
+          PR_TITLE: ${{ gitea.event.pull_request.title }}
+          HEAD_REF: ${{ gitea.head_ref }}
+        run: |
+          if [ -n "$HEAD_REF" ] && [ "$HEAD_REF" != "develop" ]; then
+            echo "::error::Releases go from develop into main, not from ${HEAD_REF}."
+            exit 1
+          fi
+          subject="${PR_TITLE:-$(git log -1 --format=%s)}"
+          if [[ ! "$subject" =~ release:\ v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            echo "::error::Expected \"release: vX.Y.Z\" in \"${subject}\"."
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
+            echo "::error::v${version} is already released."
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - name: Setup .NET
-        if: steps.version.outputs.release == 'true'
+        if: gitea.event_name == 'push'
         uses: actions/setup-dotnet@v6
       - name: Restore
-        if: steps.version.outputs.release == 'true'
+        if: gitea.event_name == 'push'
         run: dotnet restore BadgeButler.slnx
       - name: Wait for Postgres
-        if: steps.version.outputs.release == 'true'
+        if: gitea.event_name == 'push'
         run: |
           for i in $(seq 1 30); do
             (echo > /dev/tcp/postgres/5432) 2>/dev/null && exit 0
@@ -72,7 +75,7 @@ jobs:
           echo "Postgres service did not come up within 60s" >&2
           exit 1
       - name: Test
-        if: steps.version.outputs.release == 'true'
+        if: gitea.event_name == 'push'
         run: dotnet test BadgeButler.slnx --no-restore -c Release
 
   docker-image:
@@ -89,7 +92,7 @@ jobs:
 
       - name: Compute image tags
         id: tags
-        if: needs.prerequisites.outputs.release == 'true'
+        if: gitea.event_name == 'push'
         run: |
           VERSION="${{ needs.prerequisites.outputs.version }}"
           {
@@ -110,21 +113,20 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Gitea registry
-        if: needs.prerequisites.outputs.release == 'true'
+        if: gitea.event_name == 'push'
         uses: docker/login-action@v3
         with:
           registry: gitea.team5software.de
           username: ${{ gitea.actor }}
           password: ${{ secrets.T5S_PACKAGE_TOKEN }}
 
-      # On PRs this is the build-only check: no tags, no push.
       - name: Build (and push to Gitea on release)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: src/BadgeButler.Api/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ needs.prerequisites.outputs.release == 'true' }}
+          push: ${{ gitea.event_name == 'push' }}
           provenance: false
           tags: ${{ steps.tags.outputs.gitea_tags }}
           annotations: |
@@ -134,7 +136,7 @@ jobs:
 
       - name: Log in to GHCR (optional)
         id: ghcr_login
-        if: needs.prerequisites.outputs.release == 'true'
+        if: gitea.event_name == 'push'
         continue-on-error: true
         uses: docker/login-action@v3
         with:
@@ -171,6 +173,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      VERSION: ${{ needs.prerequisites.outputs.version || '0.0.0-pr' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -183,10 +187,7 @@ jobs:
       - name: Lint chart
         run: helm lint charts/badge-butler
 
-      # On PRs the version is 0.0.0-pr, only so the package step has something valid to stamp.
       - name: Set chart/app version
-        env:
-          VERSION: ${{ needs.prerequisites.outputs.version }}
         run: |
           sed -i "s/^version: .*/version: ${VERSION}/" charts/badge-butler/Chart.yaml
           sed -i "s/^appVersion: .*/appVersion: \"${VERSION}\"/" charts/badge-butler/Chart.yaml
@@ -195,16 +196,16 @@ jobs:
         run: helm package charts/badge-butler --destination .
 
       - name: Log in to Gitea registry
-        if: needs.prerequisites.outputs.release == 'true'
+        if: gitea.event_name == 'push'
         run: helm registry login gitea.team5software.de -u "${{ gitea.actor }}" -p "${{ secrets.T5S_PACKAGE_TOKEN }}"
 
       - name: Push chart to Gitea
-        if: needs.prerequisites.outputs.release == 'true'
-        run: helm push "badge-butler-${{ needs.prerequisites.outputs.version }}.tgz" oci://gitea.team5software.de/t5s/charts
+        if: gitea.event_name == 'push'
+        run: helm push "badge-butler-${VERSION}.tgz" oci://gitea.team5software.de/t5s/charts
 
       - name: Log in to GHCR (optional)
         id: ghcr_login
-        if: needs.prerequisites.outputs.release == 'true'
+        if: gitea.event_name == 'push'
         continue-on-error: true
         run: helm registry login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" -p "${{ secrets.GHCR_TOKEN }}"
 
@@ -217,7 +218,7 @@ jobs:
 
       - name: Push chart to GHCR
         if: steps.ghcr_login.outcome == 'success'
-        run: helm push "badge-butler-${{ needs.prerequisites.outputs.version }}.tgz" "oci://ghcr.io/${{ secrets.GHCR_USERNAME }}/charts"
+        run: helm push "badge-butler-${VERSION}.tgz" "oci://ghcr.io/${{ secrets.GHCR_USERNAME }}/charts"
 
       - name: Warn if GHCR login failed
         if: steps.ghcr_login.outcome == 'failure'
@@ -227,20 +228,65 @@ jobs:
             echo "Pushing to ghcr.io is optional and this can be intended. If you want to push to ghcr.io, please check your credentials."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  finish-line:
+  release:
     needs: [ prerequisites, docker-image, helm-chart ]
-    if: needs.prerequisites.outputs.release == 'true'
+    if: gitea.event_name == 'push' || gitea.base_ref == 'main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.prerequisites.outputs.version }}
+      BRANCH: ${{ gitea.head_ref || gitea.ref_name }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITEA_TOKEN }}
+          ref: ${{ env.BRANCH }}
+          fetch-depth: 0
+
+      - name: Find last release
+        id: last
+        run: echo "tag=$(git tag -l 'v*' --sort=-v:refname | head -n1)" >> "$GITHUB_OUTPUT"
+
+      # The range has to end in a branch name: git-cliff looks up PRs and authors in that
+      # branch's commits on Gitea, and the default branch (main) lacks develop's new ones.
+      - name: Generate release notes
+        uses: orhun/git-cliff-action@v4
+        with:
+          args: --strip all ${{ steps.last.outputs.tag }}..${{ env.BRANCH }}
+          github_token: ${{ secrets.GHCR_TOKEN }}
+        env:
+          GIT_CLIFF_TAG: v${{ env.VERSION }}
+          OUTPUT: release-notes.md
+
+      - name: Show release notes
+        run: |
+          {
+            echo "## v${VERSION}"
+            cat release-notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create release and tag
+        if: gitea.event_name == 'push'
+        uses: akkuman/gitea-release-action@v1
+        with:
+          token: ${{ secrets.GITEA_TOKEN }}
+          tag_name: v${{ env.VERSION }}
+          name: v${{ env.VERSION }}
+          target_commitish: ${{ gitea.sha }}
+          body_path: release-notes.md
+
       - name: Update release badge
         id: badge_update
+        if: gitea.event_name == 'push'
         continue-on-error: true
         run: |
           curl -sf -X PUT https://badges.team5software.de/badges/badge-butler-release \
             -H "Content-Type: application/json" \
             -H "X-Api-Key: ${{ secrets.BADGE_BUTLER_API_KEY }}" \
             -H "X-Badge-Key: ${{ secrets.BADGE_BUTLER_BADGE_KEY }}" \
-            -d "{\"label\":\"release\",\"message\":\"v${{ needs.prerequisites.outputs.version }}\",\"color\":\"blue\"}"
+            -d "{\"label\":\"release\",\"message\":\"v${VERSION}\",\"color\":\"blue\"}"
 
       - name: Warn if badge update failed
         if: steps.badge_update.outcome == 'failure'
