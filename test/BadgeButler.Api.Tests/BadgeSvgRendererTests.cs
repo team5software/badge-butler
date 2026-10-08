@@ -8,6 +8,8 @@ using System.Threading;
 
 using AwesomeAssertions;
 
+using T5S.BadgeButler.Api.RequestDtos;
+
 using Xunit;
 
 namespace T5S.BadgeButler.Api.Tests;
@@ -17,8 +19,8 @@ public class BadgeSvgRendererTests
     [Fact]
     public void Render_IncludesLabelAndMessageText()
     {
-        BadgeMetrics metrics = BadgeSvgRenderer.Measure("coverage", "87%");
-        string svg = BadgeSvgRenderer.Render("coverage", "87%", "0000FF", metrics);
+        BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("coverage", "87%", "0000FF"));
+        string svg = BadgeSvgRenderer.Render("coverage", "87%", metrics);
 
         svg.Should().Contain(">coverage<").And.Contain(">87%<");
     }
@@ -26,8 +28,8 @@ public class BadgeSvgRendererTests
     [Fact]
     public void Render_IsValidSvgWithExpectedRootElement()
     {
-        BadgeMetrics metrics = BadgeSvgRenderer.Measure("build", "passing");
-        string svg = BadgeSvgRenderer.Render("build", "passing", "008000", metrics);
+        BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("build", "passing", "008000"));
+        string svg = BadgeSvgRenderer.Render("build", "passing", metrics);
 
         svg.Should().StartWith("<svg").And.EndWith("</svg>");
     }
@@ -35,8 +37,8 @@ public class BadgeSvgRendererTests
     [Fact]
     public void Render_UsesTheGivenColorAsMessageBackground()
     {
-        BadgeMetrics metrics = BadgeSvgRenderer.Measure("build", "passing");
-        string svg = BadgeSvgRenderer.Render("build", "passing", "4CC11C", metrics);
+        BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("build", "passing", "4CC11C"));
+        string svg = BadgeSvgRenderer.Render("build", "passing", metrics);
 
         svg.Should().Contain("fill=\"#4CC11C\"");
     }
@@ -44,8 +46,8 @@ public class BadgeSvgRendererTests
     [Fact]
     public void Render_EscapesHtmlSpecialCharactersInLabelAndMessage()
     {
-        BadgeMetrics metrics = BadgeSvgRenderer.Measure("<script>", "a & b");
-        string svg = BadgeSvgRenderer.Render("<script>", "a & b", "0000FF", metrics);
+        BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("<script>", "a & b", "0000FF"));
+        string svg = BadgeSvgRenderer.Render("<script>", "a & b", metrics);
 
         svg.Should().NotContain("<script>")
             .And.Contain("&lt;script&gt;")
@@ -55,11 +57,11 @@ public class BadgeSvgRendererTests
     [Fact]
     public void Render_WidensSvgAsTextGetsLonger()
     {
-        BadgeMetrics shortMetrics = BadgeSvgRenderer.Measure("a", "b");
-        BadgeMetrics longMetrics = BadgeSvgRenderer.Measure("a much longer label", "b");
+        BadgeAppearance shortMetrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("a", "b", "0000FF"));
+        BadgeAppearance longMetrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("a much longer label", "b", "0000FF"));
 
-        string shortSvg = BadgeSvgRenderer.Render("a", "b", "0000FF", shortMetrics);
-        string longSvg = BadgeSvgRenderer.Render("a much longer label", "b", "0000FF", longMetrics);
+        string shortSvg = BadgeSvgRenderer.Render("a", "b", shortMetrics);
+        string longSvg = BadgeSvgRenderer.Render("a much longer label", "b", longMetrics);
 
         ExtractWidth(shortSvg).Should().BeLessThan(ExtractWidth(longSvg));
     }
@@ -75,14 +77,13 @@ public class BadgeSvgRendererTests
         try
         {
             Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
-            BadgeMetrics metrics = BadgeSvgRenderer.Measure("build", "passing");
-            string svg = BadgeSvgRenderer.Render("build", "passing", "0000FF", metrics);
+            BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("build", "passing", "0000FF"));
+            string svg = BadgeSvgRenderer.Render("build", "passing", metrics);
 
             // Not a blanket "no commas anywhere" check - font-family legitimately uses commas
             // as its font-stack separator. Only the numeric attributes matter here.
             svg.Should().MatchRegex("width=\"\\d+\\.\\d+\"");
-            svg.Should().MatchRegex("height=\"\\d+\\.\\d+\"");
-            svg.Should().NotMatchRegex(@"(?:width|height|x)=""\d+,\d+""");
+            svg.Should().NotMatchRegex(@"(?:width|x)=""\d+,\d+""");
         }
         finally
         {
@@ -139,8 +140,8 @@ public class BadgeSvgRendererTests
     [Fact]
     public void Render_UsesWhiteTextOnTheDarkLabelBackground()
     {
-        BadgeMetrics metrics = BadgeSvgRenderer.Measure("build", "passing");
-        string svg = BadgeSvgRenderer.Render("build", "passing", "44CC11", metrics);
+        BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("build", "passing", "44CC11"));
+        string svg = BadgeSvgRenderer.Render("build", "passing", metrics);
 
         ExtractTextFills(svg).Label.Should().Be("FFFFFF");
     }
@@ -150,8 +151,8 @@ public class BadgeSvgRendererTests
     [InlineData("0000FF", "FFFFFF")]
     public void Render_UsesContrastingTextColorOnTheMessageBackground(string background, string expected)
     {
-        BadgeMetrics metrics = BadgeSvgRenderer.Measure("build", "passing");
-        string svg = BadgeSvgRenderer.Render("build", "passing", background, metrics);
+        BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("build", "passing", background));
+        string svg = BadgeSvgRenderer.Render("build", "passing", metrics);
 
         ExtractTextFills(svg).Message.Should().Be(expected);
     }

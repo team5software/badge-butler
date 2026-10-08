@@ -6,10 +6,10 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using T5S.BadgeButler.Api.Persistence;
+using T5S.BadgeButler.Api.RequestDtos;
 
 namespace T5S.BadgeButler.Api.Seeding;
 
-/// <summary>Dev-only sample data - see Program.cs, only ever called when IsDevelopment().</summary>
 public static class BadgeSeeder
 {
     private static readonly (string Key, string Label, string Message, string Color)[] Samples =
@@ -22,7 +22,7 @@ public static class BadgeSeeder
         ("sample-long-content", "a fairly long label for width testing", "an equally long message value here", "orange"),
     ];
 
-    public static async Task SeedAsync(IBadgeStore store, CancellationToken ct = default)
+    public static async Task SeedAsync(IApplicationStorage store, CancellationToken ct = default)
     {
         foreach ((string key, string label, string message, string color) in Samples)
         {
@@ -32,8 +32,8 @@ public static class BadgeSeeder
             }
 
             BadgeSvgRenderer.TryNormalizeColor(color, out string normalizedColor);
-            BadgeMetrics metrics = BadgeSvgRenderer.Measure(label, message);
-            await store.UpsertAsync(key, label, message, normalizedColor, metrics, providedAccessKey: null, ct);
+            BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite(label, message, normalizedColor));
+            await store.UpsertAsync(key, label, message, metrics, null, ct);
         }
     }
 }

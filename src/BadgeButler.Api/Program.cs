@@ -40,13 +40,13 @@ builder.Services.AddAuthorization();
 
 if (builder.Environment.IsDevelopment())
 {
-    builder.Services.AddSingleton<IBadgeStore, InMemoryBadgeStore>();
+    builder.Services.AddSingleton<IApplicationStorage, InMemoryStorage>();
 }
 else
 {
     string connectionString = builder.Configuration.GetConnectionString("BadgeButler")
                               ?? throw new InvalidOperationException("Missing required configuration: ConnectionStrings:BadgeButler");
-    builder.Services.AddSingleton<IBadgeStore>(new PostgresBadgeStore(connectionString));
+    builder.Services.AddSingleton<IApplicationStorage>(new PostgresStorage(connectionString));
 }
 
 WebApplication app = builder.Build();
@@ -64,12 +64,15 @@ app.UseAuthorization();
 app.MapHealthChecks("/health");
 app.MapBadges();
 
-IBadgeStore badgeStore = app.Services.GetRequiredService<IBadgeStore>();
-await badgeStore.InitializeAsync();
+IApplicationStorage applicationStorage = app.Services.GetRequiredService<IApplicationStorage>();
+if (await applicationStorage.InitializeAsync(BadgeSvgRenderer.CalculateAppearance) == InitializationResult.Failed)
+{
+    throw new InvalidOperationException("Database initialization failed - schema version is newer than this build supports, or a migration step failed.");
+}
 
 if (app.Environment.IsDevelopment())
 {
-    await BadgeSeeder.SeedAsync(badgeStore);
+    await BadgeSeeder.SeedAsync(applicationStorage);
 }
 
 app.Run();

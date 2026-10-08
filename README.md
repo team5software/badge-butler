@@ -39,3 +39,19 @@ and `latest`, to both registries:
 |---|---|---|
 | Gitea | `gitea.team5software.de/t5s/badge-butler` | `oci://gitea.team5software.de/t5s/charts` |
 | GHCR | `ghcr.io/team5software/badge-butler` | `oci://ghcr.io/team5software/charts` |
+
+## Database
+
+> **Note — placeholder until proper documentation is written.**
+>
+> The schema is versioned through a single-row `schema_info` table. On startup the app upgrades
+> an older schema with the migrations in `src/BadgeButler.Api/Persistence/Migration/`, refuses
+> to start on a newer one, and recalculates the stored badge appearance when the rendering
+> constants change.
+>
+> **A missing `schema_info` table means a full reset:** the app drops every table and creates
+> the current schema from scratch, **deleting all badges**. This is deliberate. Running
+> `DROP TABLE schema_info;` and restarting is the way to wipe the database. It also happens
+> when `schema_info` goes missing by accident. Before pointing the app at an existing database
+> that has no `schema_info`, such as a restore or a database from before schema versioning
+> (≤ v0.2.0), create `schema_info` with the matching version first.
