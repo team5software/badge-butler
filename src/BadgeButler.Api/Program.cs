@@ -6,6 +6,8 @@ using System;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.AspNetCore.DataProtection.XmlEncryption;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -38,6 +40,11 @@ builder.Services.AddProblemDetails();
 builder.Services.AddAuthentication(ApiKeyAuthenticationOptions.DefaultSchema)
     .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationOptions.DefaultSchema, _ => { });
 builder.Services.AddAuthorization();
+builder.Services.Configure<KeyManagementOptions>(options =>
+{
+    options.XmlRepository = new InMemoryXmlRepository();
+    options.XmlEncryptor = new NullXmlEncryptor();
+});
 
 if (builder.Environment.IsDevelopment())
 {
@@ -54,8 +61,6 @@ WebApplication app = builder.Build();
 
 app.MapOpenApi();
 app.MapScalarApiReference();
-
-app.UseHttpsRedirection();
 
 app.UseExceptionHandler();
 

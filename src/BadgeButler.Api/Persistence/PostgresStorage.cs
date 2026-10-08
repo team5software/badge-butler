@@ -19,7 +19,9 @@ using T5S.BadgeButler.Api.RequestDtos;
 
 namespace T5S.BadgeButler.Api.Persistence;
 
-public sealed class PostgresStorage(string connectionString, ILogger<PostgresStorage> logger) : DatabaseStorage(connectionString)
+// Npgsql tries Kerberos (GSS) encryption by default and logs a load error without libgssapi, which the
+// runtime image lacks. Prepended, so a GSS setting in the configured connection string still wins.
+public sealed class PostgresStorage(string connectionString, ILogger<PostgresStorage> logger) : DatabaseStorage($"GSS Encryption Mode=Disable;{connectionString}")
 {
     private const long InitializationLockKey = 0x4261646765427574;
 
