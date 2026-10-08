@@ -9,5 +9,26 @@
   "prHourlyLimit": 0,
   "prConcurrentLimit": 0,
 
-  "enabledManagers": ["github-actions", "nuget"]
+  "enabledManagers": ["github-actions", "nuget"],
+
+  // Auto-merge goes through Gitea's own "merge when checks succeed", so it waits for every required
+  // check in develop's branch protection. Squash like human PRs into develop (pr-title-lint.yaml).
+  "platformAutomerge": true,
+  "automergeStrategy": "squash",
+
+  "packageRules": [
+    {
+      // Non-major updates merge themselves once the pipelines pass; majors stay manual.
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "automerge": true
+    },
+    {
+      // NuGet only: wait until a release is 3 days old, so a compromised or quickly yanked version
+      // can't be merged within hours. Not global - frequent releasers like Renovate never settle.
+      // "strict" holds back the branch/PR entirely until then, instead of opening a pending one.
+      "matchDatasources": ["nuget"],
+      "minimumReleaseAge": "3 days",
+      "internalChecksFilter": "strict"
+    }
+  ]
 }
