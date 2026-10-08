@@ -138,6 +138,12 @@ public class BadgeSvgRendererTests
     }
 
     [Fact]
+    public void AppearanceFingerprint_IsALowercaseSha256Hex()
+    {
+        BadgeSvgRenderer.AppearanceFingerprint.Should().MatchRegex("^[0-9a-f]{64}$");
+    }
+
+    [Fact]
     public void Render_UsesWhiteTextOnTheDarkLabelBackground()
     {
         BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("build", "passing", "44CC11"));

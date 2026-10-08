@@ -17,7 +17,7 @@ public sealed class InMemoryStorage : IApplicationStorage
 {
     private readonly ConcurrentDictionary<string, Badge> _badges = new();
 
-    public Task<InitializationResult> InitializeAsync(Func<BadgeWrite, BadgeAppearance> calculateAppearance, CancellationToken cancellationToken = default) => Task.FromResult(InitializationResult.Success);
+    public Task<InitializationResult> InitializeAsync(AppearanceCalculator appearanceCalculator, CancellationToken cancellationToken = default) => Task.FromResult(InitializationResult.Success);
 
     public Task<Badge?> GetAsync(string key, CancellationToken ct = default) => Task.FromResult(_badges.GetValueOrDefault(key));
 

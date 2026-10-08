@@ -17,9 +17,17 @@ public enum UpsertResult { Created, Updated, Unauthorized }
 
 public enum DeleteResult { Success, NotFound, Unauthorized }
 
+/// <summary>
+/// How stored badge appearance is computed, passed in so storage never depends on the renderer.
+/// Fingerprint changes whenever Calculate would produce different values for the same input
+/// (see BadgeSvgRenderer.AppearanceFingerprint); persistent storage recalculates every badge
+/// with Calculate when the fingerprint it last stored differs.
+/// </summary>
+public sealed record AppearanceCalculator(string Fingerprint, Func<BadgeWrite, BadgeAppearance> Calculate);
+
 public interface IApplicationStorage
 {
-    Task<InitializationResult> InitializeAsync(Func<BadgeWrite, BadgeAppearance> calculateAppearance, CancellationToken cancellationToken = default);
+    Task<InitializationResult> InitializeAsync(AppearanceCalculator appearanceCalculator, CancellationToken cancellationToken = default);
 
     Task<Badge?> GetAsync(string key, CancellationToken ct = default);
 

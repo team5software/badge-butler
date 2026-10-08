@@ -13,10 +13,10 @@ namespace T5S.BadgeButler.Api.Persistence;
 
 public abstract class DatabaseStorage(string connectionString) : IApplicationStorage
 {
-    protected const int CurrentSchemaVersion = 2;
+    protected const int CurrentSchemaVersion = 3;
     protected readonly string ConnectionString = connectionString;
 
-    public abstract Task<InitializationResult> InitializeAsync(Func<BadgeWrite, BadgeAppearance> calculateAppearance, CancellationToken cancellationToken = default);
+    public abstract Task<InitializationResult> InitializeAsync(AppearanceCalculator appearanceCalculator, CancellationToken cancellationToken = default);
     public abstract Task<Badge?> GetAsync(string key, CancellationToken ct = default);
     public abstract Task<UpsertResult> UpsertAsync(string key, string label, string message, BadgeAppearance appearance, string? providedAccessKey, CancellationToken ct = default);
     public abstract Task<DeleteResult> DeleteAsync(string key, string? providedAccessKey, CancellationToken ct = default);

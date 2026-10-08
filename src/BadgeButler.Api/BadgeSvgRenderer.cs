@@ -31,7 +31,26 @@ public static class BadgeSvgRenderer
     private static readonly string FontPath = Path.Combine(AppContext.BaseDirectory, "Fonts", "DejaVuSans.ttf");
     private static readonly Font BadgeFont = LoadFont();
 
-    public static string MeasurementFingerprint { get; } = ComputeMeasurementFingerprint();
+    // Sample texts measured for the fingerprint: all printable ASCII plus typical badge content.
+    private static readonly string[] MeasurementProbes =
+    [
+        " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~",
+        "build passing",
+        "42 passed",
+        "87.5%",
+        "v0.3.0",
+        "äöüÄÖÜß €",
+    ];
+
+    /// <summary>
+    /// Changes whenever <see cref="CalculateAppearance"/> would produce different stored values for
+    /// the same input, so storage can recalculate them. Hashes the font file (glyphs the probes
+    /// don't cover) plus the actual output for fixed probes - widths for <see cref="MeasurementProbes"/>
+    /// and the foreground for every 3-digit hex color - so a change in font size, SixLabors.Fonts'
+    /// measuring or the contrast rule changes it without anyone bumping a version.
+    /// Declared after the fields it uses: static initializers run in textual order.
+    /// </summary>
+    public static string AppearanceFingerprint { get; } = ComputeAppearanceFingerprint();
 
     private static Font LoadFont()
     {
@@ -39,12 +58,27 @@ public static class BadgeSvgRenderer
         return family.CreateFont(FontSize, FontStyle.Regular);
     }
 
-    private static string ComputeMeasurementFingerprint()
+    private static string ComputeAppearanceFingerprint()
     {
         using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(File.ReadAllBytes(FontPath));
-        hash.AppendData(Encoding.UTF8.GetBytes(FormattableString.Invariant($"|size={FontSize}")));
+
+        // Rounded to 0.01px so tiny floating-point differences between CPU architectures don't
+        // change the fingerprint (and with it trigger a recalculation) on every pod move.
+        foreach (string probe in MeasurementProbes)
+        {
+            BadgeAppearance appearance = CalculateAppearance(new BadgeWrite(probe, probe, "000000"));
+            AppendToHash(hash, FormattableString.Invariant($"{probe}={MathF.Round(appearance.LabelWidth, 2)}\n"));
+        }
+
+        for (int rgb = 0; rgb < 0x1000; rgb++)
+        {
+            AppendToHash(hash, ContrastingForeground(ExpandHex(rgb.ToString("X3", CultureInfo.InvariantCulture))));
+        }
+
         return Convert.ToHexStringLower(hash.GetHashAndReset());
+
+        static void AppendToHash(IncrementalHash hash, string value) => hash.AppendData(Encoding.UTF8.GetBytes(value));
     }
 
     public static BadgeAppearance CalculateAppearance(BadgeWrite writeRequest)
