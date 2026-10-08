@@ -29,6 +29,13 @@
       "matchDatasources": ["nuget"],
       "minimumReleaseAge": "3 days",
       "internalChecksFilter": "strict"
+    },
+    {
+      // Everything that plugs into Microsoft.Testing.Platform, updated and tested in one PR.
+      // Majors are still split into their own PR (separateMajorMinor).
+      "matchDatasources": ["nuget"],
+      "matchPackageNames": ["xunit.v3*", "Microsoft.Testing.*", "coverlet.*"],
+      "groupName": "test tooling"
     }
   ]
 }
