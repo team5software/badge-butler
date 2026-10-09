@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
 ARG TARGETARCH
 WORKDIR /src
@@ -13,7 +14,8 @@ COPY Directory.Build.props Directory.Packages.props global.json ./
 COPY src/BadgeButler.Api/ src/BadgeButler.Api/
 
 RUN dotnet restore src/BadgeButler.Api/BadgeButler.Api.csproj -r "$(cat /tmp/rid)"
-RUN dotnet publish src/BadgeButler.Api/BadgeButler.Api.csproj -r "$(cat /tmp/rid)" \
+RUN --mount=type=secret,id=sixlabors_license,env=SixLaborsLicenseKey \
+    dotnet publish src/BadgeButler.Api/BadgeButler.Api.csproj -r "$(cat /tmp/rid)" \
     -c Release \
     -o /app \
     --self-contained false \
