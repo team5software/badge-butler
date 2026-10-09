@@ -123,7 +123,7 @@ jobs:
           password: ${{ secrets.T5S_PACKAGE_TOKEN }}
 
       - name: Build (and push to Gitea on release)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: src/BadgeButler.Api/Dockerfile
@@ -148,7 +148,7 @@ jobs:
 
       - name: Build and push to GHCR
         if: steps.ghcr_login.outcome == 'success'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: src/BadgeButler.Api/Dockerfile
