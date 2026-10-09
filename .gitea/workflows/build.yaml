@@ -18,6 +18,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
     env:
       BADGEBUTLER_TEST_POSTGRES: Host=postgres;Port=5432;Username=postgres;Password=postgres;Database=postgres
+      SixLaborsLicenseKey: ${{ secrets.SIXLABORS_LICENSE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7

@@ -16,5 +16,8 @@
 # OS artifacts
 .DS_Store
 
+# Six Labors license (CI uses the SIXLABORS_LICENSE_KEY secret)
+sixlabors.lic
+
 # AI artifacts
 .junie/

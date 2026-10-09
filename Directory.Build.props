@@ -17,6 +17,11 @@
 		<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
 	</PropertyGroup>
 
+	<!-- SixLabors.Fonts only searches below the project directory; CI passes $(SixLaborsLicenseKey) instead -->
+	<PropertyGroup Condition="Exists('$(MSBuildThisFileDirectory)sixlabors.lic')">
+		<SixLaborsLicenseFile>$(MSBuildThisFileDirectory)sixlabors.lic</SixLaborsLicenseFile>
+	</PropertyGroup>
+
 	<!-- Test specific PropertyGroup 
 	 - Tests are always executables with the MTP / xunit.v3
 	-->

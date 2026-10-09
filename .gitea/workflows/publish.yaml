@@ -8,6 +8,7 @@
 #                            download through the GitHub API rejects Gitea's own token
 #   BADGE_BUTLER_API_KEY   - release badge update
 #   BADGE_BUTLER_BADGE_KEY - release badge update
+#   SIXLABORS_LICENSE_KEY  - full contents of sixlabors.lic, required to build SixLabors.Fonts v3+
 #
 # Required variable (not a secret, or its value gets masked in logs and summaries):
 #   GHCR_USERNAME          - GitHub user/org to push images and charts under
@@ -31,6 +32,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
     env:
       BADGEBUTLER_TEST_POSTGRES: Host=postgres;Port=5432;Username=postgres;Password=postgres;Database=postgres
+      SixLaborsLicenseKey: ${{ secrets.SIXLABORS_LICENSE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -86,6 +88,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      SIXLABORS_LICENSE_KEY: ${{ secrets.SIXLABORS_LICENSE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -130,6 +134,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: ${{ gitea.event_name == 'push' }}
           provenance: false
+          secret-envs: sixlabors_license=SIXLABORS_LICENSE_KEY
           tags: ${{ steps.tags.outputs.gitea_tags }}
           annotations: |
             index:org.opencontainers.image.source=https://gitea.team5software.de/t5s/badge-butler
@@ -155,6 +160,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
+          secret-envs: sixlabors_license=SIXLABORS_LICENSE_KEY
           tags: ${{ steps.tags.outputs.ghcr_tags }}
           annotations: |
             index:org.opencontainers.image.source=https://github.com/team5software/badge-butler

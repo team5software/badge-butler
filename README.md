@@ -32,6 +32,11 @@ are open — fine for a private/LAN-only deployment. When set, write requests ne
 - `charts/badge-butler/` — Helm chart; see its own [README](charts/badge-butler/README.md) for
   values and install instructions.
 
+Release builds need a [Six Labors license](https://sixlabors.com/posts/licence-enforcement-changes/)
+for SixLabors.Fonts (Debug builds only warn): put `sixlabors.lic` in the repository root
+(gitignored) or set `SixLaborsLicenseKey` to its contents. For the image, pass it as a build
+secret: `docker build --secret id=sixlabors_license,src=sixlabors.lic -f src/BadgeButler.Api/Dockerfile .`
+
 Images and the chart are published on releases only, tagged with the version and `latest`, to
 both registries:
 
