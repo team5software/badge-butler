@@ -106,6 +106,7 @@ public static class BadgeSvgRenderer
 
         return FormattableString.Invariant($"""
                                             <svg xmlns="http://www.w3.org/2000/svg" width="{totalWidth}" height="{BadgeHeight}" role="img" aria-label="{Escape(label)}: {Escape(message)}">
+                                              <title>{Escape(label)}: {Escape(message)}</title>
                                               <clipPath id="badge-rect">
                                                 <rect width="{totalWidth}" height="{BadgeHeight}" rx="{BadgeCornerRadius}" />
                                               </clipPath>

@@ -3,8 +3,10 @@
 // See LICENSE file in the project root for full license terms.
 
 using System.Globalization;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Xml.Linq;
 
 using AwesomeAssertions;
 
@@ -16,6 +18,8 @@ namespace T5S.BadgeButler.Api.Tests;
 
 public class BadgeSvgRendererTests
 {
+    private static readonly XNamespace Svg = "http://www.w3.org/2000/svg";
+
     [Fact]
     public void Render_IncludesLabelAndMessageText()
     {
@@ -52,6 +56,47 @@ public class BadgeSvgRendererTests
         svg.Should().NotContain("<script>")
             .And.Contain("&lt;script&gt;")
             .And.Contain("a &amp; b");
+    }
+
+    [Fact]
+    public void Render_HasExactlyOneTitleAsFirstChildOfTheRoot()
+    {
+        BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("build", "passing", "44CC11"));
+        XElement root = XElement.Parse(BadgeSvgRenderer.Render("build", "passing", metrics));
+
+        root.Descendants(Svg + "title").Should().ContainSingle();
+        root.Elements().First().Name.Should().Be(Svg + "title");
+    }
+
+    [Theory]
+    [InlineData("build", "passing")]
+    [InlineData("<a & 'b'>", "\"c\" & <d>")]
+    public void Render_TitleTextEqualsTheAriaLabel(string label, string message)
+    {
+        BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite(label, message, "44CC11"));
+        XElement root = XElement.Parse(BadgeSvgRenderer.Render(label, message, metrics));
+
+        root.Element(Svg + "title")!.Value.Should().Be($"{label}: {message}")
+            .And.Be(root.Attribute("aria-label")!.Value);
+    }
+
+    [Fact]
+    public void Render_EscapesXmlSpecialCharactersInTheTitle()
+    {
+        BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("<a & 'b'>", "\"c\"", "44CC11"));
+        string svg = BadgeSvgRenderer.Render("<a & 'b'>", "\"c\"", metrics);
+
+        svg.Should().Contain("<title>&lt;a &amp; &#39;b&#39;&gt;: &quot;c&quot;</title>");
+    }
+
+    [Fact]
+    public void Render_TitleDoesNotChangeTheWidth()
+    {
+        BadgeAppearance metrics = BadgeSvgRenderer.CalculateAppearance(new BadgeWrite("build", "passing", "44CC11"));
+        XElement root = XElement.Parse(BadgeSvgRenderer.Render("build", "passing", metrics));
+
+        float expected = metrics.LabelWidth + metrics.MessageWidth + 40;
+        float.Parse(root.Attribute("width")!.Value, CultureInfo.InvariantCulture).Should().Be(expected);
     }
 
     [Fact]

@@ -10,6 +10,10 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.Extensions.DependencyInjection;
+
+using T5S.BadgeButler.Api.Persistence;
+
 using Xunit;
 
 namespace T5S.BadgeButler.Api.Tests;
@@ -53,6 +57,21 @@ public class BadgeEndpointTests
         HttpResponseMessage response = await client.GetAsync("/badges/sample-build", Ct);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Get_RendersTheTitleForABadgeStoredBeforeItExisted()
+    {
+        // Only label, message, colors and widths are stored; the SVG is rendered on every GET,
+        // so badges stored by older versions get the title without a recalculation.
+        await using BadgeApiFactory factory = new();
+        using HttpClient client = factory.CreateClient();
+        IApplicationStorage storage = factory.Services.GetRequiredService<IApplicationStorage>();
+        await storage.UpsertAsync("old", "build", "passing", new BadgeAppearance(30.5f, 50.25f, "44CC11", "000000"), null, Ct);
+
+        string svg = await client.GetStringAsync("/badges/old", Ct);
+
+        svg.Should().Contain("<title>build: passing</title>").And.Contain("width=\"120.75\"");
     }
 
     [Fact]
