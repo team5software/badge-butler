@@ -13,7 +13,7 @@ jobs:
     # job container (reachable as "postgres") - the job itself needs no Docker socket.
     services:
       postgres:
-        image: postgres:18
+        image: postgres:19
         env:
           POSTGRES_PASSWORD: postgres
     env:
@@ -140,3 +140,52 @@ jobs:
           path: |
             ./.artifacts/test-results/**/coverage.*.xml
             ./.artifacts/coverage-report
+
+  # The same tests against the older Postgres majors we still support (18 = production CNPG).
+  # build-test above covers the latest major and owns badges, coverage and artifacts.
+  # Renovate can't see matrix values, so this list is kept by hand: when Renovate bumps the
+  # Postgres image in build-test to a new major, add the previous one here; drop a major once it
+  # reaches end of life (https://www.postgresql.org/support/versioning/).
+  postgres-compat:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["15", "16", "17", "18"]
+    name: postgres-compat (${{ matrix.postgres }})
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_PASSWORD: postgres
+    env:
+      BADGEBUTLER_TEST_POSTGRES: Host=postgres;Port=5432;Username=postgres;Password=postgres;Database=postgres
+      SixLaborsLicenseKey: ${{ secrets.SIXLABORS_LICENSE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITEA_TOKEN }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Restore
+        run: dotnet restore BadgeButler.slnx
+
+      - name: Build
+        run: dotnet build BadgeButler.slnx --no-restore -c Release
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            (echo > /dev/tcp/postgres/5432) 2>/dev/null && exit 0
+            sleep 2
+          done
+          echo "Postgres service did not come up within 60s" >&2
+          exit 1
+
+      - name: Test
+        run: dotnet test --no-build -c Release
