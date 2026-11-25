@@ -44,7 +44,13 @@ public class RenameConstantsFingerprintToAppearanceFingerprint : IMigration
     {
         const string commandText = """
                                    ALTER TABLE schema_info RENAME COLUMN constants_fingerprint TO appearance_fingerprint;
-                                   ALTER TABLE schema_info RENAME CONSTRAINT schema_info_constants_fingerprint_not_null TO schema_info_appearance_fingerprint_not_null;
+                                   -- Postgres 18+ names NOT NULL constraints; older versions have nothing to rename.
+                                   DO $$
+                                   BEGIN
+                                       IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'schema_info'::regclass AND conname = 'schema_info_constants_fingerprint_not_null') THEN
+                                           ALTER TABLE schema_info RENAME CONSTRAINT schema_info_constants_fingerprint_not_null TO schema_info_appearance_fingerprint_not_null;
+                                       END IF;
+                                   END $$;
                                    """;
 
         await using NpgsqlCommand command = connection.CreateCommand();

@@ -45,7 +45,13 @@ public class RemovePositionAndHeight_AddForegroundColor : IMigration
         const string commandText = """
                                    ALTER TABLE badges RENAME COLUMN color TO background_color;
                                    ALTER TABLE badges RENAME CONSTRAINT badges_color_check TO badges_background_color_check;
-                                   ALTER TABLE badges RENAME CONSTRAINT badges_color_not_null TO badges_background_color_not_null;
+                                   -- Postgres 18+ names NOT NULL constraints; older versions have nothing to rename.
+                                   DO $$
+                                   BEGIN
+                                       IF EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'badges'::regclass AND conname = 'badges_color_not_null') THEN
+                                           ALTER TABLE badges RENAME CONSTRAINT badges_color_not_null TO badges_background_color_not_null;
+                                       END IF;
+                                   END $$;
                                    ALTER TABLE badges
                                        DROP COLUMN label_base_x,
                                        DROP COLUMN message_base_x,
