@@ -12,7 +12,7 @@
     <PackageVersion Include="Microsoft.Testing.Extensions.TrxReport" Version="2.5.3" />
     <PackageVersion Include="Npgsql" Version="10.0.4" />
     <PackageVersion Include="Scalar.AspNetCore" Version="3.2.0" />
-    <PackageVersion Include="SixLabors.Fonts" Version="3.2.0" />
+    <PackageVersion Include="SixLabors.Fonts" Version="3.2.1" />
     <PackageVersion Include="xunit.v3" Version="4.0.3" />
   </ItemGroup>
 </Project>
